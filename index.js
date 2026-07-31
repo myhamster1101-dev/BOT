@@ -33,7 +33,7 @@ const REPORT_LOG_CHANNEL_ID = process.env.REPORT_LOG_CHANNEL_ID;
 const commands = [
     // คำสั่งสร้างเมนูผู้ใช้พร้อมปุ่มกด
     new SlashCommandBuilder()
-        .setName('setup-menu')
+        .setName('/setup-menu')
         .setDescription('สร้างเมนูศูนย์ช่วยเหลือพร้อมปุ่มกด')
         .setDefaultMemberPermissions(PermissionFlagsBits.Administrator)
         .addStringOption(option =>
@@ -51,7 +51,7 @@ const commands = [
 
     // คำสั่งแอดมินจัดการสมาชิก
     new SlashCommandBuilder()
-        .setName('action')
+        .setName(/action')
         .setDescription('จัดการสมาชิก (Blacklist / Ban / Report)')
         .setDefaultMemberPermissions(PermissionFlagsBits.ModerateMembers)
         .addUserOption(option =>
