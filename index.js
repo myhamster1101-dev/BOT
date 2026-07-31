@@ -149,7 +149,7 @@ client.on('interactionCreate', async (interaction) => {
 
             const modal = new ModalBuilder()
                 .setCustomId(`submit_custom_modal_${encodeURIComponent(data.mt)}`)
-                .setTitle(data.mt || 'แบบฟอร์มส่งเรื่อง');
+                .setTitle(data.mt || 'แบบฟอร์มแจ้งปัญหา');
 
             const input1 = new TextInputBuilder()
                 .setCustomId('input_field_1')
@@ -173,11 +173,11 @@ client.on('interactionCreate', async (interaction) => {
             // สำรองกรณีที่ปุ่มเดิมใช้ข้อมูล JSON ที่ยาวเกินจนพัง ให้แสดงฟอร์มมาตรฐานทันที
             const modal = new ModalBuilder()
                 .setCustomId('submit_fallback_modal')
-                .setTitle('📝 แบบฟอร์มส่งเรื่องร้องเรียน');
+                .setTitle('📝 แบบฟอร์มส่งปัญหาที่พบ');
 
             const input1 = new TextInputBuilder()
                 .setCustomId('input_field_1')
-                .setLabel('ชื่อ / ID / ช่องทางติดต่อ')
+                .setLabel('ชื่อ / ID')
                 .setStyle(TextInputStyle.Short)
                 .setRequired(true);
 
