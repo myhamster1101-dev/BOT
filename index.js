@@ -70,7 +70,6 @@ client.on('interactionCreate', async (interaction) => {
     if (!interaction.isChatInputCommand()) return;
     const { commandName } = interaction;
 
-    // --- คำสั่งสร้างปุ่มร้องเรียน ---
     if (commandName === 'setup-ticket') {
         const title = interaction.options.getString('title');
         const description = interaction.options.getString('description');
@@ -97,7 +96,6 @@ client.on('interactionCreate', async (interaction) => {
         await interaction.reply({ content: '✅ สร้างปุ่มเรียบร้อยแล้ว!', ephemeral: true });
     }
 
-    // --- คำสั่งแอดมินจัดการสมาชิก ---
     if (commandName === 'action') {
         if (ADMIN_CHANNEL_ID && interaction.channelId !== ADMIN_CHANNEL_ID) {
             return interaction.reply({ content: '❌ ใช้ได้เฉพาะในห้องแอดมินเท่านั้น!', ephemeral: true });
@@ -124,10 +122,7 @@ client.on('interactionCreate', async (interaction) => {
 });
 
 // --------------------------------------------------
-// 3. กดปุ่ม -> เด้งแบบฟอร์ม (Modal)
-// --------------------------------------------------
-// --------------------------------------------------
-// 3. กดปุ่ม -> เด้งแบบฟอร์ม (Modal เหลือช่องเดียว)
+// 3. กดปุ่ม -> เด้งแบบฟอร์ม (เปิดฟอร์มที่มีแค่ช่องรายละเอียด)
 // --------------------------------------------------
 client.on('interactionCreate', async (interaction) => {
     if (!interaction.isButton()) return;
@@ -137,11 +132,10 @@ client.on('interactionCreate', async (interaction) => {
             .setCustomId('modal_report_submit')
             .setTitle('📝 แบบฟอร์มส่งเรื่องร้องเรียน');
 
-        // มีแค่ช่องรายละเอียดช่องเดียว
         const detailInput = new TextInputBuilder()
             .setCustomId('input_detail')
             .setLabel('รายละเอียดเรื่องที่ต้องการแจ้ง')
-            .setPlaceholder('พิมพ์รายละเอียดปัญหาที่ต้องการแจ้ง')
+            .setPlaceholder('พิมพ์รายละเอียดปัญหาที่ต้องการแจ้ง...')
             .setStyle(TextInputStyle.Paragraph)
             .setRequired(true);
 
@@ -151,19 +145,29 @@ client.on('interactionCreate', async (interaction) => {
 
         await interaction.showModal(modal);
     }
-});                                                
+});
+
 // --------------------------------------------------
-// 4. ผู้ใช้กดส่งแบบฟอร์ม -> ส่งข้อมูลเข้า Log
-// --------------------------------------------------
-// --------------------------------------------------
-// 4. ผู้ใช้กดส่งแบบฟอร์ม -> ส่งข้อมูลเข้า Log
+// 4. ผู้ใช้กดส่งแบบฟอร์ม -> ดึงค่าช่องรายละเอียด แล้วส่งเข้า Log
 // --------------------------------------------------
 client.on('interactionCreate', async (interaction) => {
     if (!interaction.isModalSubmit()) return;
 
-    if (interaction.customId === 'modal_report_submit') {
-        const userIdVal = interaction.fields.getTextInputValue('input_user_id');
-        const detailVal = interaction.fields.getTextInputValue('input_detail');
+    // รองรับ ID ฟอร์มทุกรูปแบบเพื่อไม่ให้พัง
+    if (interaction.customId === 'modal_report_submit' || interaction.customId.startsWith('submit_custom_modal_') || interaction.customId === 'submit_fallback_modal') {
+        
+        // ดึงค่าอย่างปลอดภัย (ลองดึงจาก input_detail ก่อน ถ้าไม่มีค่อยลองดึงจาก input_field_1/2)
+        let detailVal = '';
+        try {
+            detailVal = interaction.fields.getTextInputValue('input_detail');
+        } catch (e) {
+            try {
+                detailVal = interaction.fields.getTextInputValue('input_field_2');
+            } catch (err) {
+                detailVal = interaction.fields.getTextInputValue('input_field_1');
+            }
+        }
+
         const reportChannel = interaction.guild.channels.cache.get(REPORT_LOG_CHANNEL_ID);
 
         const embed = new EmbedBuilder()
@@ -171,7 +175,6 @@ client.on('interactionCreate', async (interaction) => {
             .setColor(0xED4245)
             .addFields(
                 { name: 'ผู้ส่งรายงาน', value: `<@${interaction.user.id}> (${interaction.user.tag})`, inline: false },
-                { name: 'ชื่อ / ID', value: userIdVal, inline: false },
                 { name: 'รายละเอียดเรื่องที่ต้องการแจ้ง', value: detailVal, inline: false }
             )
             .setTimestamp();
