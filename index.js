@@ -33,18 +33,15 @@ const REPORT_LOG_CHANNEL_ID = process.env.REPORT_LOG_CHANNEL_ID;
 // 1. ลงทะเบียน Slash Commands
 // --------------------------------------------------
 const commands = [
-    // คำสั่งสร้าง Embed + ปุ่มกดเปิดฟอร์ม (กำหนดเองได้)
+    // คำสั่งสร้างปุ่มส่งเรื่องร้องเรียน
     new SlashCommandBuilder()
-        .setName('create-form-button')
-        .setDescription('สร้างปุ่มกดเปิดแบบฟอร์ม (กำหนดข้อความและช่องกรอกเองได้)')
+        .setName('create-ticket-button')
+        .setDescription('สร้าง Embed พร้อมปุ่มส่งเรื่องร้องเรียน')
         .setDefaultMemberPermissions(PermissionFlagsBits.Administrator)
         .addStringOption(opt => opt.setName('title').setDescription('หัวข้อ Embed').setRequired(true))
         .addStringOption(opt => opt.setName('description').setDescription('รายละเอียด Embed').setRequired(true))
-        .addStringOption(opt => opt.setName('button_label').setDescription('ชื่อบนปุ่มกด (เช่น กรอกข้อมูล / ส่งเรื่อง)').setRequired(true))
-        .addStringOption(opt => opt.setName('modal_title').setDescription('หัวข้อบนหน้าต่างแบบฟอร์ม').setRequired(true))
-        .addStringOption(opt => opt.setName('field1_label').setDescription('คำถามช่องที่ 1 (เช่น ชื่อ-นามสกุล / ID)').setRequired(true))
-        .addStringOption(opt => opt.setName('field2_label').setDescription('คำถามช่องที่ 2 (เช่น รายละเอียด / เหตุผล)').setRequired(false))
-        .addStringOption(opt => opt.setName('button_emoji').setDescription('อีโมจิบนปุ่ม (เช่น 📝 หรือ 🎁)').setRequired(false))
+        .addStringOption(opt => opt.setName('button_label').setDescription('ชื่อข้อความบนปุ่ม (เช่น ส่งเรื่องร้องเรียน)').setRequired(false))
+        .addStringOption(opt => opt.setName('button_emoji').setDescription('อีโมจิหน้าปุ่ม (เช่น 🚨 หรือ 📮)').setRequired(false))
         .addStringOption(opt => opt.setName('image_url').setDescription('ลิงก์รูป Banner (ถ้ามี)').setRequired(false)),
 
     // คำสั่งแอดมินจัดการสมาชิก
@@ -75,46 +72,34 @@ client.on('interactionCreate', async (interaction) => {
     if (!interaction.isChatInputCommand()) return;
     const { commandName } = interaction;
 
-    // --- /create-form-button ---
-    if (commandName === 'create-form-button') {
+    if (commandName === 'create-ticket-button') {
         const title = interaction.options.getString('title');
         const description = interaction.options.getString('description');
-        const buttonLabel = interaction.options.getString('button_label');
-        const modalTitle = interaction.options.getString('modal_title');
-        const field1Label = interaction.options.getString('field1_label');
-        const field2Label = interaction.options.getString('field2_label') || '';
-        const buttonEmoji = interaction.options.getString('button_emoji');
+        const buttonLabel = interaction.options.getString('button_label') || 'ส่งเรื่องร้องเรียน';
+        const buttonEmoji = interaction.options.getString('button_emoji') || '🚨';
         const imageUrl = interaction.options.getString('image_url');
 
         const embed = new EmbedBuilder()
             .setTitle(title)
             .setDescription(description)
-            .setColor(0x5865F2)
+            .setColor(0xED4245)
             .setTimestamp();
 
         if (imageUrl) embed.setImage(imageUrl);
 
-        // ฝังข้อมูลโครงสร้าง Modal ลงใน CustomId ของปุ่ม
-        const customIdData = JSON.stringify({
-            mt: modalTitle.slice(0, 20),
-            f1: field1Label.slice(0, 20),
-            f2: field2Label.slice(0, 20)
-        });
-
+        // สร้างปุ่มแบบ ID สั้น ป้องกันปัญหารวน
         const btn = new ButtonBuilder()
-            .setCustomId(`custom_modal_${customIdData}`)
+            .setCustomId('btn_open_ticket_modal')
             .setLabel(buttonLabel)
+            .setEmoji(buttonEmoji)
             .setStyle(ButtonStyle.Primary);
-
-        if (buttonEmoji) btn.setEmoji(buttonEmoji);
 
         const row = new ActionRowBuilder().addComponents(btn);
 
         await interaction.channel.send({ embeds: [embed], components: [row] });
-        await interaction.reply({ content: '✅ สร้างปุ่มพร้อมแบบฟอร์มเรียบร้อยแล้ว!', ephemeral: true });
+        await interaction.reply({ content: '✅ สร้างปุ่มเรียบร้อยแล้ว!', ephemeral: true });
     }
 
-    // --- /action (แอดมินจัดการ) ---
     if (commandName === 'action') {
         if (ADMIN_CHANNEL_ID && interaction.channelId !== ADMIN_CHANNEL_ID) {
             return interaction.reply({ content: '❌ ใช้ได้เฉพาะในห้องแอดมินเท่านั้น!', ephemeral: true });
@@ -141,71 +126,67 @@ client.on('interactionCreate', async (interaction) => {
 });
 
 // --------------------------------------------------
-// 3. ประมวลผลเมื่อกดปุ่ม (เด้ง Modal ตามที่ตั้งไว้)
+// 3. เมื่อผู้ใช้กดปุ่มส่งเรื่อง -> เปิด แบบฟอร์ม (Modal)
 // --------------------------------------------------
 client.on('interactionCreate', async (interaction) => {
     if (!interaction.isButton()) return;
 
-    if (interaction.customId.startsWith('custom_modal_')) {
-        const jsonString = interaction.customId.replace('custom_modal_', '');
-        const data = JSON.parse(jsonString);
-
+    if (interaction.customId === 'btn_open_ticket_modal') {
         const modal = new ModalBuilder()
-            .setCustomId(`submit_custom_modal_${encodeURIComponent(data.mt)}`)
-            .setTitle(data.mt);
+            .setCustomId('modal_ticket_form')
+            .setTitle('📝 แบบฟอร์มส่งเรื่องร้องเรียน');
 
+        // ช่องที่ 1: ชื่อ หรือ ID ผู้แจ้ง
         const input1 = new TextInputBuilder()
-            .setCustomId('input_field_1')
-            .setLabel(data.f1)
+            .setCustomId('ticket_user_info')
+            .setLabel('ชื่อตัวละคร / ID / ช่องทางติดต่อกลับ')
+            .setPlaceholder('ระบุชื่อในเกม หรือ Discord ID')
             .setStyle(TextInputStyle.Short)
             .setRequired(true);
 
-        modal.addComponents(new ActionRowBuilder().addComponents(input1));
+        // ช่องที่ 2: รายละเอียดปัญหา
+        const input2 = new TextInputBuilder()
+            .setCustomId('ticket_detail')
+            .setLabel('รายละเอียดเรื่องที่ต้องการแจ้ง')
+            .setPlaceholder('พิมพ์รายละเอียด หรือลิงก์รูปภาพหลักฐานที่นี่...')
+            .setStyle(TextInputStyle.Paragraph)
+            .setRequired(true);
 
-        if (data.f2) {
-            const input2 = new TextInputBuilder()
-                .setCustomId('input_field_2')
-                .setLabel(data.f2)
-                .setStyle(TextInputStyle.Paragraph)
-                .setRequired(true);
-            modal.addComponents(new ActionRowBuilder().addComponents(input2));
-        }
+        modal.addComponents(
+            new ActionRowBuilder().addComponents(input1),
+            new ActionRowBuilder().addComponents(input2)
+        );
 
         await interaction.showModal(modal);
     }
 });
 
 // --------------------------------------------------
-// 4. ประมวลผลเมื่อผู้ใช้กรอกฟอร์มเสร็จแล้วกดส่ง
+// 4. เมื่อผู้ใช้กดส่งแบบฟอร์ม -> ส่งข้อมูลเข้าห้อง Log
 // --------------------------------------------------
 client.on('interactionCreate', async (interaction) => {
     if (!interaction.isModalSubmit()) return;
 
-    if (interaction.customId.startsWith('submit_custom_modal_')) {
-        const modalTitle = decodeURIComponent(interaction.customId.replace('submit_custom_modal_', ''));
+    if (interaction.customId === 'modal_ticket_form') {
+        const userInfo = interaction.fields.getTextInputValue('ticket_user_info');
+        const detail = interaction.fields.getTextInputValue('ticket_detail');
         const reportChannel = interaction.guild.channels.cache.get(REPORT_LOG_CHANNEL_ID);
 
-        const val1 = interaction.fields.getTextInputValue('input_field_1');
-        let val2 = null;
-        try {
-            val2 = interaction.fields.getTextInputValue('input_field_2');
-        } catch (e) {}
-
         const embed = new EmbedBuilder()
-            .setTitle(`📩 ข้อมูลใหม่จากฟอร์ม: ${modalTitle}`)
-            .setColor(0x57F287)
+            .setTitle('🚨 มีการส่งเรื่องร้องเรียนใหม่')
+            .setColor(0xED4245)
             .addFields(
-                { name: 'ผู้ส่งข้อมูล', value: `<@${interaction.user.id}> (${interaction.user.tag})`, inline: false },
-                { name: 'ข้อมูลช่องที่ 1', value: val1, inline: false }
+                { name: 'ผู้ส่งเรื่อง (Discord)', value: `<@${interaction.user.id}> (${interaction.user.tag})`, inline: false },
+                { name: 'ข้อมูลผู้แจ้ง', value: userInfo, inline: false },
+                { name: 'รายละเอียดปัญหา', value: detail, inline: false }
             )
             .setTimestamp();
 
-        if (val2) {
-            embed.addFields({ name: 'ข้อมูลช่องที่ 2', value: val2, inline: false });
+        if (reportChannel) {
+            await reportChannel.send({ embeds: [embed] });
         }
 
-        if (reportChannel) await reportChannel.send({ embeds: [embed] });
-        await interaction.reply({ content: '✅ บันทึกข้อมูลเรียบร้อยแล้ว ขอบคุณครับ!', ephemeral: true });
+        await interaction.reply({ content: '✅ ส่งข้อมูลเรื่องร้องเรียนให้ทีมงานเรียบร้อยแล้ว ขอบคุณครับ!', ephemeral: true });
     }
 });
 
