@@ -91,7 +91,7 @@ client.on('interactionCreate', async (interaction) => {
     const { commandName } = interaction;
 
     // --- คำสั่ง /setup-menu ---
-    if (commandName === 'setup-menu') {
+    if (commandName === '/setup-menu') {
         const title = interaction.options.getString('title');
         const description = interaction.options.getString('description');
         const imageUrl = interaction.options.getString('image_url');
