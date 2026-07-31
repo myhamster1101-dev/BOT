@@ -162,6 +162,9 @@ client.on('interactionCreate', async (interaction) => {
 // --------------------------------------------------
 // 4. ผู้ใช้กดส่งแบบฟอร์ม -> ส่งข้อมูลเข้า Log
 // --------------------------------------------------
+// --------------------------------------------------
+// 4. ผู้ใช้กดส่งแบบฟอร์ม -> ส่งข้อมูลเข้า Log
+// --------------------------------------------------
 client.on('interactionCreate', async (interaction) => {
     if (!interaction.isModalSubmit()) return;
 
@@ -171,10 +174,10 @@ client.on('interactionCreate', async (interaction) => {
         const reportChannel = interaction.guild.channels.cache.get(REPORT_LOG_CHANNEL_ID);
 
         const embed = new EmbedBuilder()
-            .setTitle('🚨 มีการส่งเรื่องร้องเรียนใหม่')
+            .setTitle(`🚨 ผู้ใช้ ${interaction.user.username} รายงานปัญหา`)
             .setColor(0xED4245)
             .addFields(
-                { name: 'ผู้ส่งเรื่อง', value: `<@${interaction.user.id}> (${interaction.user.tag})`, inline: false },
+                { name: 'ผู้ส่งรายงาน', value: `<@${interaction.user.id}> (${interaction.user.tag})`, inline: false },
                 { name: 'ชื่อ / ID', value: userIdVal, inline: false },
                 { name: 'รายละเอียดเรื่องที่ต้องการแจ้ง', value: detailVal, inline: false }
             )
