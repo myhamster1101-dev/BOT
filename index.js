@@ -23,7 +23,6 @@ const client = new Client({
     ]
 });
 
-// ดึงค่าจาก Environment Variables
 const TOKEN = process.env.DISCORD_TOKEN;
 const CLIENT_ID = process.env.CLIENT_ID;
 const BLACKLIST_CHANNEL_ID = process.env.BLACKLIST_CHANNEL_ID;
@@ -31,23 +30,21 @@ const REPORT_LOG_CHANNEL_ID = process.env.REPORT_LOG_CHANNEL_ID;
 const BAN_LOG_CHANNEL_ID = process.env.BAN_LOG_CHANNEL_ID;
 const BANNED_ROLE_ID = process.env.BANNED_ROLE_ID;
 
-// --------------------------------------------------
-// 1. ลงทะเบียน Slash Commands
-// --------------------------------------------------
+// 1. Slash Commands Definition
 const commands = [
     new SlashCommandBuilder()
         .setName('setup-ticket')
-        .setDescription('ตั้งค่าและสร้างปุ่มส่งเรื่องร้องเรียนในช่องนี้')
+        .setDescription('ตั้งค่าและสร้างปุ่มส่งเรื่องร้องเรียน')
         .setDefaultMemberPermissions(PermissionFlagsBits.Administrator),
 
     new SlashCommandBuilder()
         .setName('setup-report')
-        .setDescription('ตั้งค่าและสร้างปุ่มรายงานผู้กระทำผิดในช่องนี้')
+        .setDescription('ตั้งค่าและสร้างปุ่มรายงานผู้กระทำผิด')
         .setDefaultMemberPermissions(PermissionFlagsBits.Administrator),
 
     new SlashCommandBuilder()
         .setName('setup-admin')
-        .setDescription('ตั้งค่าและสร้างปุ่มจัดการผู้ใช้ในช่องนี้ (สำหรับแอดมิน)')
+        .setDescription('ตั้งค่าและสร้างปุ่มจัดการผู้ใช้ (สำหรับแอดมิน)')
         .setDefaultMemberPermissions(PermissionFlagsBits.ModerateMembers)
 ].map(command => command.toJSON());
 
@@ -59,151 +56,68 @@ client.on('ready', async () => {
         await rest.put(Routes.applicationCommands(CLIENT_ID), { body: commands });
         console.log('✅ ลงทะเบียน Slash Commands เรียบร้อย!');
     } catch (error) {
-        console.error('❌ เกิดข้อผิดพลาดในการลงทะเบียน Commands:', error);
+        console.error('❌ Error Commands:', error);
     }
 });
 
-// --------------------------------------------------
-// 2. จัดการทุก Interaction ใน Event เดียวเพื่อป้องกันการประมวลผลช้า
-// --------------------------------------------------
+// Helper สร้าง Modal แบบรวดเร็ว
+function createSetupModal(customId, title, defaultTitle, defaultDesc, defaultBtn) {
+    const modal = new ModalBuilder().setCustomId(customId).setTitle(title);
+    
+    const titleInput = new TextInputBuilder().setCustomId('cfg_title').setLabel('1. หัวข้อ Embed (Title)').setValue(defaultTitle).setStyle(TextInputStyle.Short).setRequired(true);
+    const descInput = new TextInputBuilder().setCustomId('cfg_desc').setLabel('2. รายละเอียด (Description)').setValue(defaultDesc).setStyle(TextInputStyle.Paragraph).setRequired(true);
+    const btnInput = new TextInputBuilder().setCustomId('cfg_btn_label').setLabel('3. ข้อความบนปุ่ม').setValue(defaultBtn).setStyle(TextInputStyle.Short).setRequired(true);
+    const imgInput = new TextInputBuilder().setCustomId('cfg_image_url').setLabel('4. ลิงก์รูป Banner (เว้นว่างได้)').setStyle(TextInputStyle.Short).setRequired(false);
+
+    modal.addComponents(
+        new ActionRowBuilder().addComponents(titleInput),
+        new ActionRowBuilder().addComponents(descInput),
+        new ActionRowBuilder().addComponents(btnInput),
+        new ActionRowBuilder().addComponents(imgInput)
+    );
+    return modal;
+}
+
+// 2. Main Interaction Listener
 client.on('interactionCreate', async (interaction) => {
     try {
-        // ==========================================
-        // A. จัดการ Slash Commands (เปิด Modal ตั้งค่า)
-        // ==========================================
+        // --- A. COMMAND HANDLERS ---
         if (interaction.isChatInputCommand()) {
-            const { commandName } = interaction;
-
-            if (commandName === 'setup-ticket') {
-                const modal = new ModalBuilder()
-                    .setCustomId('modal_config_ticket')
-                    .setTitle('⚙️ ตั้งค่าระบบส่งเรื่องร้องเรียน');
-
-                const titleInput = new TextInputBuilder()
-                    .setCustomId('cfg_title')
-                    .setLabel('1. หัวข้อ Embed (Title)')
-                    .setValue('📝 แจ้งปัญหาและส่งเรื่องร้องเรียน')
-                    .setStyle(TextInputStyle.Short)
-                    .setRequired(true);
-
-                const descInput = new TextInputBuilder()
-                    .setCustomId('cfg_desc')
-                    .setLabel('2. รายละเอียดข้อความ (Description)')
-                    .setValue('กดปุ่มด้านล่างเพื่อส่งเรื่องร้องเรียนหรือแจ้งปัญหากับทีมงาน')
-                    .setStyle(TextInputStyle.Paragraph)
-                    .setRequired(true);
-
-                const btnLabelInput = new TextInputBuilder()
-                    .setCustomId('cfg_btn_label')
-                    .setLabel('3. ข้อความบนปุ่ม')
-                    .setValue('ส่งเรื่องร้องเรียน')
-                    .setStyle(TextInputStyle.Short)
-                    .setRequired(true);
-
-                const imgInput = new TextInputBuilder()
-                    .setCustomId('cfg_image_url')
-                    .setLabel('4. ลิงก์รูปภาพ Banner (ถ้าไม่มีให้เว้นว่างไว้)')
-                    .setStyle(TextInputStyle.Short)
-                    .setRequired(false);
-
-                modal.addComponents(
-                    new ActionRowBuilder().addComponents(titleInput),
-                    new ActionRowBuilder().addComponents(descInput),
-                    new ActionRowBuilder().addComponents(btnLabelInput),
-                    new ActionRowBuilder().addComponents(imgInput)
+            if (interaction.commandName === 'setup-ticket') {
+                const modal = createSetupModal(
+                    'modal_config_ticket', 
+                    '⚙️ ตั้งค่าระบบส่งเรื่องร้องเรียน', 
+                    '📝 แจ้งปัญหาและส่งเรื่องร้องเรียน', 
+                    'กดปุ่มด้านล่างเพื่อส่งเรื่องร้องเรียนหรือแจ้งปัญหากับทีมงาน', 
+                    'ส่งเรื่องร้องเรียน'
                 );
-
                 return await interaction.showModal(modal);
             }
 
-            if (commandName === 'setup-report') {
-                const modal = new ModalBuilder()
-                    .setCustomId('modal_config_report')
-                    .setTitle('⚙️ ตั้งค่าระบบรายงานผู้กระทำผิด');
-
-                const titleInput = new TextInputBuilder()
-                    .setCustomId('cfg_title')
-                    .setLabel('1. หัวข้อ Embed (Title)')
-                    .setValue('⚠️ รายงานผู้กระทำผิด / สมาชิกทำผิดกฏ')
-                    .setStyle(TextInputStyle.Short)
-                    .setRequired(true);
-
-                const descInput = new TextInputBuilder()
-                    .setCustomId('cfg_desc')
-                    .setLabel('2. รายละเอียดข้อความ (Description)')
-                    .setValue('หากพบเห็นสมาชิกทำผิดกฏ สามารถกดปุ่มด้านล่างเพื่อแจ้งทีมงานได้ทันที')
-                    .setStyle(TextInputStyle.Paragraph)
-                    .setRequired(true);
-
-                const btnLabelInput = new TextInputBuilder()
-                    .setCustomId('cfg_btn_label')
-                    .setLabel('3. ข้อความบนปุ่ม')
-                    .setValue('รายงานผู้กระทำผิด')
-                    .setStyle(TextInputStyle.Short)
-                    .setRequired(true);
-
-                const imgInput = new TextInputBuilder()
-                    .setCustomId('cfg_image_url')
-                    .setLabel('4. ลิงก์รูปภาพ Banner (ถ้าไม่มีให้เว้นว่างไว้)')
-                    .setStyle(TextInputStyle.Short)
-                    .setRequired(false);
-
-                modal.addComponents(
-                    new ActionRowBuilder().addComponents(titleInput),
-                    new ActionRowBuilder().addComponents(descInput),
-                    new ActionRowBuilder().addComponents(btnLabelInput),
-                    new ActionRowBuilder().addComponents(imgInput)
+            if (interaction.commandName === 'setup-report') {
+                const modal = createSetupModal(
+                    'modal_config_report', 
+                    '⚙️ ตั้งค่าระบบรายงานผู้กระทำผิด', 
+                    '⚠️ รายงานผู้กระทำผิด / สมาชิกทำผิดกฏ', 
+                    'หากพบเห็นสมาชิกทำผิดกฏ สามารถกดปุ่มด้านล่างเพื่อแจ้งทีมงานได้ทันที', 
+                    'รายงานผู้กระทำผิด'
                 );
-
                 return await interaction.showModal(modal);
             }
 
-            if (commandName === 'setup-admin') {
-                const modal = new ModalBuilder()
-                    .setCustomId('modal_config_admin')
-                    .setTitle('⚙️ ตั้งค่าแผงควบคุมแอดมิน');
-
-                const titleInput = new TextInputBuilder()
-                    .setCustomId('cfg_title')
-                    .setLabel('1. หัวข้อ Embed (Title)')
-                    .setValue('🛠️ แผงควบคุมระบบจัดการผู้ใช้')
-                    .setStyle(TextInputStyle.Short)
-                    .setRequired(true);
-
-                const descInput = new TextInputBuilder()
-                    .setCustomId('cfg_desc')
-                    .setLabel('2. รายละเอียดข้อความ (Description)')
-                    .setValue('กดปุ่มด้านล่างเพื่อเปิดแบบฟอร์มจัดการและลงโทษผู้กระทำผิด')
-                    .setStyle(TextInputStyle.Paragraph)
-                    .setRequired(true);
-
-                const btnLabelInput = new TextInputBuilder()
-                    .setCustomId('cfg_btn_label')
-                    .setLabel('3. ข้อความบนปุ่ม')
-                    .setValue('จัดการผู้ใช้')
-                    .setStyle(TextInputStyle.Short)
-                    .setRequired(true);
-
-                const imgInput = new TextInputBuilder()
-                    .setCustomId('cfg_image_url')
-                    .setLabel('4. ลิงก์รูปภาพ Banner (ถ้าไม่มีให้เว้นว่างไว้)')
-                    .setStyle(TextInputStyle.Short)
-                    .setRequired(false);
-
-                modal.addComponents(
-                    new ActionRowBuilder().addComponents(titleInput),
-                    new ActionRowBuilder().addComponents(descInput),
-                    new ActionRowBuilder().addComponents(btnLabelInput),
-                    new ActionRowBuilder().addComponents(imgInput)
+            if (interaction.commandName === 'setup-admin') {
+                const modal = createSetupModal(
+                    'modal_config_admin', 
+                    '⚙️ ตั้งค่าแผงควบคุมแอดมิน', 
+                    '🛠️ แผงควบคุมระบบจัดการผู้ใช้', 
+                    'กดปุ่มด้านล่างเพื่อเปิดแบบฟอร์มจัดการและลงโทษผู้กระทำผิด', 
+                    'จัดการผู้ใช้'
                 );
-
                 return await interaction.showModal(modal);
             }
         }
 
-        // ==========================================
-        // B. จัดการการกดปุ่ม (Buttons)
-        // ==========================================
+        // --- B. BUTTON HANDLERS ---
         if (interaction.isButton()) {
             if (interaction.customId === 'btn_cmd_ticket') {
                 const modal = new ModalBuilder().setCustomId('modal_cmd_ticket_submit').setTitle('📝 แบบฟอร์มส่งเรื่องร้องเรียน');
@@ -216,7 +130,7 @@ client.on('interactionCreate', async (interaction) => {
                 const modal = new ModalBuilder().setCustomId('modal_cmd_report_submit').setTitle('⚠️ แบบฟอร์มรายงานผู้กระทำผิด');
                 const userInput = new TextInputBuilder().setCustomId('report_target_user').setLabel('1. แท็ก / ID ผู้กระทำผิด').setPlaceholder('ใส่ ID หรือ @username').setStyle(TextInputStyle.Short).setRequired(true);
                 const reasonInput = new TextInputBuilder().setCustomId('report_reason').setLabel('2. เหตุผลที่รายงาน').setPlaceholder('ระบุเหตุผล...').setStyle(TextInputStyle.Short).setRequired(true);
-                const detailInput = new TextInputBuilder().setCustomId('report_detail').setLabel('3. รายละเอียด/หลักฐาน').setPlaceholder('แนบรายละเอียด หรือลิงก์รูปภาพหลักฐาน...').setStyle(TextInputStyle.Paragraph).setRequired(true);
+                const detailInput = new TextInputBuilder().setCustomId('report_detail').setLabel('3. รายละเอียด/หลักฐาน').setPlaceholder('แนบรายละเอียด...').setStyle(TextInputStyle.Paragraph).setRequired(true);
 
                 modal.addComponents(
                     new ActionRowBuilder().addComponents(userInput),
@@ -229,7 +143,7 @@ client.on('interactionCreate', async (interaction) => {
             if (interaction.customId === 'btn_cmd_admin') {
                 const modal = new ModalBuilder().setCustomId('modal_cmd_admin_submit').setTitle('👤 แบบฟอร์มจัดการผู้ใช้');
                 const userInput = new TextInputBuilder().setCustomId('admin_target_user').setLabel('1. แท็ก / ID ผู้ใช้').setPlaceholder('ใส่ ID เช่น 123456789 หรือ @username').setStyle(TextInputStyle.Short).setRequired(true);
-                const reasonInput = new TextInputBuilder().setCustomId('admin_reason').setLabel('2. เหตุผลที่รายงาน').setPlaceholder('ระบุเหตุผลการลงโทษ...').setStyle(TextInputStyle.Short).setRequired(true);
+                const reasonInput = new TextInputBuilder().setCustomId('admin_reason').setLabel('2. เหตุผลที่รายงาน').setPlaceholder('ระบุเหตุผล...').setStyle(TextInputStyle.Short).setRequired(true);
                 const problemInput = new TextInputBuilder().setCustomId('admin_problem').setLabel('3. ปัญหาที่พบจากผู้ใช้').setStyle(TextInputStyle.Paragraph).setRequired(true);
 
                 modal.addComponents(
@@ -241,11 +155,9 @@ client.on('interactionCreate', async (interaction) => {
             }
         }
 
-        // ==========================================
-        // C. จัดการการส่งแบบฟอร์ม (Modal Submit)
-        // ==========================================
+        // --- C. MODAL SUBMIT HANDLERS ---
         if (interaction.isModalSubmit()) {
-            // --- C1. สร้างระบบหลังจากกรอกตั้งค่า ---
+            // C1. Config Submits
             if (interaction.customId.startsWith('modal_config_')) {
                 const title = interaction.fields.getTextInputValue('cfg_title');
                 const desc = interaction.fields.getTextInputValue('cfg_desc');
@@ -275,28 +187,26 @@ client.on('interactionCreate', async (interaction) => {
                 const btn = new ButtonBuilder().setCustomId(customIdBtn).setLabel(btnLabel).setEmoji(emoji).setStyle(btnStyle);
 
                 await interaction.channel.send({ embeds: [embed], components: [new ActionRowBuilder().addComponents(btn)] });
-                return await interaction.reply({ content: '✅ สร้างระบบพร้อมใช้งานในห้องนี้เรียบร้อยแล้ว!', ephemeral: true });
+                return await interaction.reply({ content: '✅ สร้างระบบพร้อมใช้งานเรียบร้อยแล้ว!', ephemeral: true });
             }
 
-            // --- C2. ผู้ใช้ส่งเรื่องร้องเรียน ---
+            // C2. Form Submits
             if (interaction.customId === 'modal_cmd_ticket_submit') {
                 const detailVal = interaction.fields.getTextInputValue('input_detail');
                 const reportChannel = interaction.guild.channels.cache.get(REPORT_LOG_CHANNEL_ID);
 
                 const embed = new EmbedBuilder()
-                    .setTitle(`🚨 ผู้ใช้ ${interaction.user.username} รายงานปัญหา`)
+                    .setTitle(`🚨 เรื่องร้องเรียนจาก ${interaction.user.username}`)
                     .setColor(0xED4245)
                     .addFields(
-                        { name: 'ผู้ส่งรายงาน', value: `<@${interaction.user.id}> (${interaction.user.tag})`, inline: false },
-                        { name: 'รายละเอียดเรื่องที่ต้องการแจ้ง', value: detailVal, inline: false }
-                    )
-                    .setTimestamp();
+                        { name: 'ผู้ส่งเรื่อง', value: `<@${interaction.user.id}>`, inline: false },
+                        { name: 'รายละเอียด', value: detailVal, inline: false }
+                    ).setTimestamp();
 
                 if (reportChannel) await reportChannel.send({ embeds: [embed] });
                 return await interaction.reply({ content: '✅ ส่งข้อมูลให้ทีมงานเรียบร้อยแล้ว!', ephemeral: true });
             }
 
-            // --- C3. ผู้ใช้รายงานผู้ทำผิด ---
             if (interaction.customId === 'modal_cmd_report_submit') {
                 const targetUser = interaction.fields.getTextInputValue('report_target_user');
                 const reason = interaction.fields.getTextInputValue('report_reason');
@@ -304,21 +214,19 @@ client.on('interactionCreate', async (interaction) => {
                 const reportChannel = interaction.guild.channels.cache.get(REPORT_LOG_CHANNEL_ID);
 
                 const embed = new EmbedBuilder()
-                    .setTitle(`⚠️ มีการรายงานผู้กระทำผิด`)
+                    .setTitle(`⚠️ รายงานผู้กระทำผิด`)
                     .setColor(0xFEE75C)
                     .addFields(
-                        { name: 'ผู้ส่งรายงาน', value: `<@${interaction.user.id}> (${interaction.user.tag})`, inline: false },
+                        { name: 'ผู้ส่งรายงาน', value: `<@${interaction.user.id}>`, inline: false },
                         { name: 'ผู้ถูกรายงาน', value: targetUser, inline: false },
                         { name: 'เหตุผล', value: reason, inline: false },
-                        { name: 'รายละเอียด/หลักฐาน', value: detail, inline: false }
-                    )
-                    .setTimestamp();
+                        { name: 'รายละเอียด', value: detail, inline: false }
+                    ).setTimestamp();
 
                 if (reportChannel) await reportChannel.send({ embeds: [embed] });
                 return await interaction.reply({ content: '✅ ส่งรายงานให้ทีมงานเรียบร้อยแล้ว!', ephemeral: true });
             }
 
-            // --- C4. แอดมินส่งฟอร์มจัดการผู้ใช้ ---
             if (interaction.customId === 'modal_cmd_admin_submit') {
                 const rawUser = interaction.fields.getTextInputValue('admin_target_user').replace(/[<@!>]/g, '').trim();
                 const reason = interaction.fields.getTextInputValue('admin_reason');
@@ -329,23 +237,22 @@ client.on('interactionCreate', async (interaction) => {
 
                 const selectMenu = new StringSelectMenuBuilder()
                     .setCustomId(`menu_admin_penalty_${targetMember.id}`)
-                    .setPlaceholder('4. เลือกลงบัญชี (แบน & ลงบัญชีดำ)')
+                    .setPlaceholder('เลือกลงบัญชี (แบน & ลงบัญชีดำ)')
                     .addOptions([
                         { label: '⛔ ลงบัญชีดำ (Blacklist)', description: 'เตะออกจากเซิร์ฟเวอร์ + ประกาศห้องบัญชีดำ', value: 'admin_penalty_blacklist', emoji: '⛔' },
-                        { label: '🔨 แบน (Ban / Timeout)', description: 'ให้ยศ "บัญชีถูกแบน" + กำหนดเวลา + ประกาศห้องแบน', value: 'admin_penalty_ban', emoji: '🔨' }
+                        { label: '🔨 แบน (Ban / Timeout)', description: 'ให้ยศ "บัญชีถูกแบน" + กำหนดเวลา', value: 'admin_penalty_ban', emoji: '🔨' }
                     ]);
 
                 client.adminTempData = client.adminTempData || new Map();
                 client.adminTempData.set(targetMember.id, { reason, problem });
 
                 return await interaction.reply({
-                    content: `🎯 **ผู้ถูกจัดการ:** <@${targetMember.id}>\n📝 **เหตุผล:** ${reason}\n⚠️ **ปัญหา:** ${problem}\n\n👇 **กรุณาเลือกประเภทการลงโทษ:**`,
+                    content: `🎯 **ผู้ถูกจัดการ:** <@${targetMember.id}>\n📝 **เหตุผล:** ${reason}\n⚠️ **ปัญหา:** ${problem}\n\n👇 **เลือกลงโทษ:**`,
                     components: [new ActionRowBuilder().addComponents(selectMenu)],
                     ephemeral: true
                 });
             }
 
-            // --- C5. แอดมินระบุเวลาแบน ---
             if (interaction.customId.startsWith('modal_admin_ban_time_')) {
                 const targetId = interaction.customId.replace('modal_admin_ban_time_', '');
                 const durationStr = interaction.fields.getTextInputValue('ban_duration');
@@ -368,23 +275,19 @@ client.on('interactionCreate', async (interaction) => {
                     .setTitle('🔨 ประกาศสมาชิกโดนแบน')
                     .setColor(0xFF0000)
                     .addFields(
-                        { name: 'ผู้ถูกลงโทษ', value: `<@${targetMember.id}> (${targetMember.user.tag})`, inline: false },
+                        { name: 'ผู้ถูกลงโทษ', value: `<@${targetMember.id}>`, inline: false },
                         { name: 'ระยะเวลา', value: durationStr, inline: true },
                         { name: 'เหตุผล', value: tempData.reason, inline: true },
                         { name: 'ปัญหาที่พบ', value: tempData.problem, inline: false },
                         { name: 'ผู้อนุมัติ', value: `<@${interaction.user.id}>`, inline: false }
-                    )
-                    .setThumbnail(targetMember.user.displayAvatarURL())
-                    .setTimestamp();
+                    ).setThumbnail(targetMember.user.displayAvatarURL()).setTimestamp();
 
                 if (banLogChan) await banLogChan.send({ embeds: [banEmbed] });
-                return await interaction.reply({ content: `✅ ดำเนินการแบน <@${targetId}> ระยะเวลา \`${durationStr}\` และส่งประกาศเรียบร้อย!`, ephemeral: true });
+                return await interaction.reply({ content: `✅ ดำเนินการแบน <@${targetId}> ระยะเวลา \`${durationStr}\` เรียบร้อย!`, ephemeral: true });
             }
         }
 
-        // ==========================================
-        // D. จัดการ Dropdown (Select Menu)
-        // ==========================================
+        // --- D. SELECT MENU HANDLERS ---
         if (interaction.isStringSelectMenu()) {
             if (interaction.customId.startsWith('menu_admin_penalty_')) {
                 const targetId = interaction.customId.replace('menu_admin_penalty_', '');
@@ -404,14 +307,12 @@ client.on('interactionCreate', async (interaction) => {
                             { name: 'เหตุผล', value: tempData.reason, inline: false },
                             { name: 'ปัญหาที่พบ', value: tempData.problem, inline: false },
                             { name: 'โดยแอดมิน', value: `<@${interaction.user.id}>`, inline: false }
-                        )
-                        .setThumbnail(targetMember.user.displayAvatarURL())
-                        .setTimestamp();
+                        ).setThumbnail(targetMember.user.displayAvatarURL()).setTimestamp();
 
                     if (blacklistChan) await blacklistChan.send({ embeds: [blacklistEmbed] });
                     await targetMember.kick(`[Blacklist] ${tempData.reason}`).catch(() => null);
 
-                    return await interaction.update({ content: `⛔ บันทึกรายชื่อ <@${targetId}> ลงห้องบัญชีดำ และเตะออกจากเซิร์ฟเวอร์เรียบร้อย!`, components: [] });
+                    return await interaction.update({ content: `⛔ บันทึก <@${targetId}> ลงบัญชีดำและเตะออกเรียบร้อย!`, components: [] });
                 }
 
                 if (selectedOption === 'admin_penalty_ban') {
@@ -424,7 +325,7 @@ client.on('interactionCreate', async (interaction) => {
             }
         }
     } catch (err) {
-        console.error('Interaction Error:', err);
+        console.error('Interaction Exception:', err);
     }
 });
 
