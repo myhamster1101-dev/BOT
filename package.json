@@ -1,7 +1,7 @@
 {
-  "name": "discord-admin-help-bot",
-  "version": "1.0.0",
-  "description": "Discord Help Center & Admin Control Bot",
+  "name": "discord-slash-help-bot",
+  "version": "2.0.0",
+  "description": "Discord Slash Command Help Center & Admin Control Bot",
   "main": "index.js",
   "scripts": {
     "start": "node index.js"
