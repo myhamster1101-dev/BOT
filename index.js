@@ -213,10 +213,10 @@ client.on('interactionCreate', async (interaction) => {
         } catch (e) {}
 
         const embed = new EmbedBuilder()
-            .setTitle('🚨 มีการส่งเรื่องร้องเรียนใหม่')
+            .setTitle('🚨 ผู้ใช้ {username} รายงานปัญหา')
             .setColor(0xED4245)
             .addFields(
-                { name: 'ผู้ส่งเรื่อง', value: `<@${interaction.user.id}> (${interaction.user.tag})`, inline: false },
+                { name: 'ผู้ส่งรายงาน', value: `<@${interaction.user.id}> (${interaction.user.tag})`, inline: false },
                 { name: 'ข้อมูลผู้แจ้ง / ช่องที่ 1', value: val1, inline: false }
             )
             .setTimestamp();
