@@ -126,39 +126,32 @@ client.on('interactionCreate', async (interaction) => {
 // --------------------------------------------------
 // 3. กดปุ่ม -> เด้งแบบฟอร์ม (Modal)
 // --------------------------------------------------
+// --------------------------------------------------
+// 3. กดปุ่ม -> เด้งแบบฟอร์ม (Modal เหลือช่องเดียว)
+// --------------------------------------------------
 client.on('interactionCreate', async (interaction) => {
     if (!interaction.isButton()) return;
 
-    if (interaction.customId === 'btn_open_report_modal') {
+    if (interaction.customId === 'btn_open_report_modal' || interaction.customId.startsWith('custom_modal_')) {
         const modal = new ModalBuilder()
             .setCustomId('modal_report_submit')
             .setTitle('📝 แบบฟอร์มส่งเรื่องร้องเรียน');
 
-        // ช่องที่ 1: ชื่อ / ID
-        const nameInput = new TextInputBuilder()
-            .setCustomId('input_user_id')
-            .setLabel('ชื่อ / ID')
-            .setPlaceholder('ระบุชื่อ หรือ ID ของคุณ')
-            .setStyle(TextInputStyle.Short)
-            .setRequired(true);
-
-        // ช่องที่ 2: รายละเอียด
+        // มีแค่ช่องรายละเอียดช่องเดียว
         const detailInput = new TextInputBuilder()
             .setCustomId('input_detail')
             .setLabel('รายละเอียดเรื่องที่ต้องการแจ้ง')
-            .setPlaceholder('พิมพ์รายละเอียดปัญหาหรือแนบลิงก์รูปภาพ...')
+            .setPlaceholder('พิมพ์รายละเอียดปัญหาที่ต้องการแจ้ง')
             .setStyle(TextInputStyle.Paragraph)
             .setRequired(true);
 
         modal.addComponents(
-            new ActionRowBuilder().addComponents(nameInput),
             new ActionRowBuilder().addComponents(detailInput)
         );
 
         await interaction.showModal(modal);
     }
-});
-
+});                                                
 // --------------------------------------------------
 // 4. ผู้ใช้กดส่งแบบฟอร์ม -> ส่งข้อมูลเข้า Log
 // --------------------------------------------------
