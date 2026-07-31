@@ -2,6 +2,8 @@ const {
     Client, 
     GatewayIntentBits, 
     ActionRowBuilder, 
+    ButtonBuilder, 
+    ButtonStyle, 
     EmbedBuilder, 
     StringSelectMenuBuilder,
     ModalBuilder,
@@ -21,7 +23,6 @@ const client = new Client({
     ]
 });
 
-// ดึงค่าจาก Variables ใน Railway
 const TOKEN = process.env.DISCORD_TOKEN;
 const CLIENT_ID = process.env.CLIENT_ID;
 const ADMIN_CHANNEL_ID = process.env.ADMIN_CHANNEL_ID;
@@ -32,14 +33,18 @@ const REPORT_LOG_CHANNEL_ID = process.env.REPORT_LOG_CHANNEL_ID;
 // 1. ลงทะเบียน Slash Commands
 // --------------------------------------------------
 const commands = [
-    // คำสั่งสร้างเมนู Dropdown ฝั่งผู้ใช้งาน
+    // คำสั่งสร้าง Embed + ปุ่มกดเปิดฟอร์ม (กำหนดเองได้)
     new SlashCommandBuilder()
-        .setName('setup-help-menu')
-        .setDescription('สร้างเมนูตัวเลือกศูนย์ช่วยเหลือ (Select Menu)')
+        .setName('create-form-button')
+        .setDescription('สร้างปุ่มกดเปิดแบบฟอร์ม (กำหนดข้อความและช่องกรอกเองได้)')
         .setDefaultMemberPermissions(PermissionFlagsBits.Administrator)
         .addStringOption(opt => opt.setName('title').setDescription('หัวข้อ Embed').setRequired(true))
-        .addStringOption(opt => opt.setName('description').setDescription('รายละเอียด').setRequired(true))
-        .addStringOption(opt => opt.setName('placeholder').setDescription('ข้อความแสดงบน Dropdown (เช่น 🎀 เลือกรายการ 🎀)').setRequired(true))
+        .addStringOption(opt => opt.setName('description').setDescription('รายละเอียด Embed').setRequired(true))
+        .addStringOption(opt => opt.setName('button_label').setDescription('ชื่อบนปุ่มกด (เช่น กรอกข้อมูล / ส่งเรื่อง)').setRequired(true))
+        .addStringOption(opt => opt.setName('modal_title').setDescription('หัวข้อบนหน้าต่างแบบฟอร์ม').setRequired(true))
+        .addStringOption(opt => opt.setName('field1_label').setDescription('คำถามช่องที่ 1 (เช่น ชื่อ-นามสกุล / ID)').setRequired(true))
+        .addStringOption(opt => opt.setName('field2_label').setDescription('คำถามช่องที่ 2 (เช่น รายละเอียด / เหตุผล)').setRequired(false))
+        .addStringOption(opt => opt.setName('button_emoji').setDescription('อีโมจิบนปุ่ม (เช่น 📝 หรือ 🎁)').setRequired(false))
         .addStringOption(opt => opt.setName('image_url').setDescription('ลิงก์รูป Banner (ถ้ามี)').setRequired(false)),
 
     // คำสั่งแอดมินจัดการสมาชิก
@@ -70,55 +75,49 @@ client.on('interactionCreate', async (interaction) => {
     if (!interaction.isChatInputCommand()) return;
     const { commandName } = interaction;
 
-    // --- /setup-help-menu (สร้างเมนู Dropdown สวยๆ) ---
-    if (commandName === 'setup-help-menu') {
+    // --- /create-form-button ---
+    if (commandName === 'create-form-button') {
         const title = interaction.options.getString('title');
         const description = interaction.options.getString('description');
-        const placeholder = interaction.options.getString('placeholder');
+        const buttonLabel = interaction.options.getString('button_label');
+        const modalTitle = interaction.options.getString('modal_title');
+        const field1Label = interaction.options.getString('field1_label');
+        const field2Label = interaction.options.getString('field2_label') || '';
+        const buttonEmoji = interaction.options.getString('button_emoji');
         const imageUrl = interaction.options.getString('image_url');
 
         const embed = new EmbedBuilder()
             .setTitle(title)
             .setDescription(description)
-            .setColor(0xFFB6C1) // สีชมพูพาสเทล
+            .setColor(0x5865F2)
             .setTimestamp();
 
         if (imageUrl) embed.setImage(imageUrl);
 
-        // สร้าง Dropdown Menu เลือกรายการ
-        const selectMenu = new StringSelectMenuBuilder()
-            .setCustomId('user_help_select')
-            .setPlaceholder(placeholder) // ข้อความแสดงตรงกลางช่องเลือก
-            .addOptions([
-                {
-                    label: '🚨 แจ้งปัญหาการใช้งาน',
-                    description: 'แจ้งปัญหา ระบบขัดข้อง หรือข้อผิดพลาดต่างๆ',
-                    value: 'select_report',
-                    emoji: '🚨'
-                },
-                {
-                    label: '💡 ส่งข้อเสนอแนะ',
-                    description: 'เสนอแนะความคิดเห็นเพื่อพัฒนาเซิร์ฟเวอร์',
-                    value: 'select_suggest',
-                    emoji: '💡'
-                },
-                {
-                    label: '⛔ รายงานบัญชีดำ',
-                    description: 'รายงานผู้กระทำผิด / บัญชีดำโกงเงิน',
-                    value: 'select_blacklist',
-                    emoji: '⛔'
-                }
-            ]);
+        // ฝังข้อมูลโครงสร้าง Modal ลงใน CustomId ของปุ่ม
+        const customIdData = JSON.stringify({
+            mt: modalTitle.slice(0, 20),
+            f1: field1Label.slice(0, 20),
+            f2: field2Label.slice(0, 20)
+        });
 
-        const row = new ActionRowBuilder().addComponents(selectMenu);
+        const btn = new ButtonBuilder()
+            .setCustomId(`custom_modal_${customIdData}`)
+            .setLabel(buttonLabel)
+            .setStyle(ButtonStyle.Primary);
+
+        if (buttonEmoji) btn.setEmoji(buttonEmoji);
+
+        const row = new ActionRowBuilder().addComponents(btn);
+
         await interaction.channel.send({ embeds: [embed], components: [row] });
-        await interaction.reply({ content: '✅ สร้างเมนู Dropdown เรียบร้อยแล้ว!', ephemeral: true });
+        await interaction.reply({ content: '✅ สร้างปุ่มพร้อมแบบฟอร์มเรียบร้อยแล้ว!', ephemeral: true });
     }
 
-    // --- /action (คำสั่งแอดมินจัดการผู้ใช้) ---
+    // --- /action (แอดมินจัดการ) ---
     if (commandName === 'action') {
         if (ADMIN_CHANNEL_ID && interaction.channelId !== ADMIN_CHANNEL_ID) {
-            return interaction.reply({ content: '❌ สามารถใช้คำสั่งนี้ได้ในห้องแอดมินเท่านั้น!', ephemeral: true });
+            return interaction.reply({ content: '❌ ใช้ได้เฉพาะในห้องแอดมินเท่านั้น!', ephemeral: true });
         }
 
         const targetUser = interaction.options.getUser('target');
@@ -126,7 +125,7 @@ client.on('interactionCreate', async (interaction) => {
 
         const adminMenu = new StringSelectMenuBuilder()
             .setCustomId(`admin_select_${targetUser.id}_${encodeURIComponent(reason)}`)
-            .setPlaceholder('🎀 ༺ เลือกการดำเนินการ ༻ 🎀')
+            .setPlaceholder('เลือกรายการดำเนินการ...')
             .addOptions([
                 { label: '⛔ ลงบัญชีดำ (Blacklist)', description: 'ประกาศลงช่องบัญชีดำทันที', value: 'type_blacklist', emoji: '⛔' },
                 { label: '🔨 บทลงโทษ (Ban / Timeout)', description: 'เลือกระยะเวลาการ Timeout หรือ Ban', value: 'type_ban', emoji: '🔨' },
@@ -142,39 +141,80 @@ client.on('interactionCreate', async (interaction) => {
 });
 
 // --------------------------------------------------
-// 3. ประมวลผลเมื่อเลือก Dropdown
+// 3. ประมวลผลเมื่อกดปุ่ม (เด้ง Modal ตามที่ตั้งไว้)
+// --------------------------------------------------
+client.on('interactionCreate', async (interaction) => {
+    if (!interaction.isButton()) return;
+
+    if (interaction.customId.startsWith('custom_modal_')) {
+        const jsonString = interaction.customId.replace('custom_modal_', '');
+        const data = JSON.parse(jsonString);
+
+        const modal = new ModalBuilder()
+            .setCustomId(`submit_custom_modal_${encodeURIComponent(data.mt)}`)
+            .setTitle(data.mt);
+
+        const input1 = new TextInputBuilder()
+            .setCustomId('input_field_1')
+            .setLabel(data.f1)
+            .setStyle(TextInputStyle.Short)
+            .setRequired(true);
+
+        modal.addComponents(new ActionRowBuilder().addComponents(input1));
+
+        if (data.f2) {
+            const input2 = new TextInputBuilder()
+                .setCustomId('input_field_2')
+                .setLabel(data.f2)
+                .setStyle(TextInputStyle.Paragraph)
+                .setRequired(true);
+            modal.addComponents(new ActionRowBuilder().addComponents(input2));
+        }
+
+        await interaction.showModal(modal);
+    }
+});
+
+// --------------------------------------------------
+// 4. ประมวลผลเมื่อผู้ใช้กรอกฟอร์มเสร็จแล้วกดส่ง
+// --------------------------------------------------
+client.on('interactionCreate', async (interaction) => {
+    if (!interaction.isModalSubmit()) return;
+
+    if (interaction.customId.startsWith('submit_custom_modal_')) {
+        const modalTitle = decodeURIComponent(interaction.customId.replace('submit_custom_modal_', ''));
+        const reportChannel = interaction.guild.channels.cache.get(REPORT_LOG_CHANNEL_ID);
+
+        const val1 = interaction.fields.getTextInputValue('input_field_1');
+        let val2 = null;
+        try {
+            val2 = interaction.fields.getTextInputValue('input_field_2');
+        } catch (e) {}
+
+        const embed = new EmbedBuilder()
+            .setTitle(`📩 ข้อมูลใหม่จากฟอร์ม: ${modalTitle}`)
+            .setColor(0x57F287)
+            .addFields(
+                { name: 'ผู้ส่งข้อมูล', value: `<@${interaction.user.id}> (${interaction.user.tag})`, inline: false },
+                { name: 'ข้อมูลช่องที่ 1', value: val1, inline: false }
+            )
+            .setTimestamp();
+
+        if (val2) {
+            embed.addFields({ name: 'ข้อมูลช่องที่ 2', value: val2, inline: false });
+        }
+
+        if (reportChannel) await reportChannel.send({ embeds: [embed] });
+        await interaction.reply({ content: '✅ บันทึกข้อมูลเรียบร้อยแล้ว ขอบคุณครับ!', ephemeral: true });
+    }
+});
+
+// --------------------------------------------------
+// 5. ระบบ Dropdown สำหรับแอดมิน
 // --------------------------------------------------
 client.on('interactionCreate', async (interaction) => {
     if (!interaction.isStringSelectMenu()) return;
 
-    // --- 3.1 Dropdown ฝั่งผู้ใช้ (เด้ง Modal แบบฟอร์มขึ้นมา) ---
-    if (interaction.customId === 'user_help_select') {
-        const selected = interaction.values[0];
-
-        if (selected === 'select_report') {
-            const modal = new ModalBuilder().setCustomId('modal_report').setTitle('🚨 แบบฟอร์มแจ้งปัญหา');
-            const input = new TextInputBuilder().setCustomId('detail').setLabel('รายละเอียดปัญหาที่พบ').setStyle(TextInputStyle.Paragraph).setRequired(true);
-            modal.addComponents(new ActionRowBuilder().addComponents(input));
-            await interaction.showModal(modal);
-        }
-
-        if (selected === 'select_suggest') {
-            const modal = new ModalBuilder().setCustomId('modal_suggest').setTitle('💡 แบบฟอร์มส่งข้อเสนอแนะ');
-            const input = new TextInputBuilder().setCustomId('detail').setLabel('ข้อเสนอแนะของคุณ').setStyle(TextInputStyle.Paragraph).setRequired(true);
-            modal.addComponents(new ActionRowBuilder().addComponents(input));
-            await interaction.showModal(modal);
-        }
-
-        if (selected === 'select_blacklist') {
-            const modal = new ModalBuilder().setCustomId('modal_blacklist').setTitle('⛔ แบบฟอร์มรายงานบัญชีดำ');
-            const target = new TextInputBuilder().setCustomId('target').setLabel('ชื่อ / ID / ข้อมูลผู้ถูกรายงาน').setStyle(TextInputStyle.Short).setRequired(true);
-            const reason = new TextInputBuilder().setCustomId('reason').setLabel('เหตุผลและหลักฐานการโกง').setStyle(TextInputStyle.Paragraph).setRequired(true);
-            modal.addComponents(new ActionRowBuilder().addComponents(target), new ActionRowBuilder().addComponents(reason));
-            await interaction.showModal(modal);
-        }
-    }
-
-    // --- 3.2 Dropdown ฝั่งแอดมิน ---
     if (interaction.customId.startsWith('admin_select_')) {
         const [, , targetId, encodedReason] = interaction.customId.split('_');
         const reason = decodeURIComponent(encodedReason);
@@ -183,7 +223,6 @@ client.on('interactionCreate', async (interaction) => {
 
         if (!targetMember) return interaction.reply({ content: '❌ ไม่พบผู้ใช้คนนี้ในเซิร์ฟเวอร์', ephemeral: true });
 
-        // เลือก Blacklist
         if (selectedValue === 'type_blacklist') {
             const blacklistChannel = interaction.guild.channels.cache.get(BLACKLIST_CHANNEL_ID);
             const blacklistEmbed = new EmbedBuilder()
@@ -201,7 +240,6 @@ client.on('interactionCreate', async (interaction) => {
             await interaction.update({ content: `✅ บันทึกรายชื่อ <@${targetId}> ลงห้องบัญชีดำเรียบร้อยแล้ว`, components: [] });
         }
 
-        // เลือก Ban / Timeout (แสดง Dropdown เลือกระยะเวลาต่อ)
         if (selectedValue === 'type_ban') {
             const banSubMenu = new StringSelectMenuBuilder()
                 .setCustomId(`sub_ban_${targetId}_${encodeURIComponent(reason)}`)
@@ -216,7 +254,6 @@ client.on('interactionCreate', async (interaction) => {
             await interaction.update({ content: `⚙️ เลือกระดับบทลงโทษสำหรับ <@${targetId}>:`, components: [row] });
         }
 
-        // เลือก Report (ส่ง DM + ลงห้องกระทำผิด)
         if (selectedValue === 'type_report') {
             const reportChannel = interaction.guild.channels.cache.get(REPORT_LOG_CHANNEL_ID);
 
@@ -246,7 +283,6 @@ client.on('interactionCreate', async (interaction) => {
         }
     }
 
-    // เมนูย่อยเลือกระยะเวลา Ban/Timeout
     if (interaction.customId.startsWith('sub_ban_')) {
         const [, , targetId, encodedReason] = interaction.customId.split('_');
         const reason = decodeURIComponent(encodedReason);
@@ -263,50 +299,6 @@ client.on('interactionCreate', async (interaction) => {
             await targetMember.ban({ reason });
             await interaction.update({ content: `⛔ ดำเนินการแบน <@${targetId}> ออกจากเซิร์ฟเวอร์เรียบร้อย`, components: [] });
         }
-    }
-});
-
-// --------------------------------------------------
-// 4. ประมวลผลข้อมูลที่ผู้ใช้กรอกผ่าน Modal
-// --------------------------------------------------
-client.on('interactionCreate', async (interaction) => {
-    if (!interaction.isModalSubmit()) return;
-
-    const reportChannel = interaction.guild.channels.cache.get(REPORT_LOG_CHANNEL_ID);
-
-    if (interaction.customId === 'modal_report' || interaction.customId === 'modal_suggest') {
-        const isReport = interaction.customId === 'modal_report';
-        const detail = interaction.fields.getTextInputValue('detail');
-
-        const embed = new EmbedBuilder()
-            .setTitle(isReport ? '🚨 มีรายการแจ้งปัญหาใหม่' : '💡 มีรายการข้อเสนอแนะใหม่')
-            .setColor(isReport ? 0xFF0000 : 0x0099FF)
-            .addFields(
-                { name: 'ผู้ส่งเรื่อง', value: `<@${interaction.user.id}> (${interaction.user.tag})`, inline: true },
-                { name: 'รายละเอียด', value: detail }
-            )
-            .setTimestamp();
-
-        if (reportChannel) await reportChannel.send({ embeds: [embed] });
-        await interaction.reply({ content: '✅ ข้อมูลถูกส่งเข้าสู่ระบบแอดมินเรียบร้อยแล้ว ขอบคุณครับ!', ephemeral: true });
-    }
-
-    if (interaction.customId === 'modal_blacklist') {
-        const target = interaction.fields.getTextInputValue('target');
-        const reason = interaction.fields.getTextInputValue('reason');
-
-        const embed = new EmbedBuilder()
-            .setTitle('⛔ มีรายงานบัญชีดำใหม่ (รอแอดมินตรวจสอบ)')
-            .setColor(0x000000)
-            .addFields(
-                { name: 'ผู้ส่งรายงาน', value: `<@${interaction.user.id}>`, inline: true },
-                { name: 'ผู้ถูกรายงาน', value: target, inline: true },
-                { name: 'เหตุผล/หลักฐาน', value: reason }
-            )
-            .setTimestamp();
-
-        if (reportChannel) await reportChannel.send({ embeds: [embed] });
-        await interaction.reply({ content: '✅ ส่งรายงานบัญชีดำเรียบร้อย แอดมินจะรีบดำเนินการตรวจสอบครับ!', ephemeral: true });
     }
 });
 
