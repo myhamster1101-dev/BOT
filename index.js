@@ -20,20 +20,19 @@ const client = new Client({
     ]
 });
 
-// ดึงค่าจาก Environment Variables ใน Railway
+// ดึงค่าจาก Variables ใน Railway
 const TOKEN = process.env.DISCORD_TOKEN;
-const CLIENT_ID = process.env.CLIENT_ID; // **อย่าลืมเพิ่มตัวแปรนี้ใน Railway (Application ID ของบอท)**
+const CLIENT_ID = process.env.CLIENT_ID;
 const ADMIN_CHANNEL_ID = process.env.ADMIN_CHANNEL_ID;
 const BLACKLIST_CHANNEL_ID = process.env.BLACKLIST_CHANNEL_ID;
 const REPORT_LOG_CHANNEL_ID = process.env.REPORT_LOG_CHANNEL_ID;
 
 // --------------------------------------------------
-// 1. ลงทะเบียน Slash Commands ( / )
+// 1. กำหนดโครงสร้าง Slash Commands (ห้ามมี / ใน setName)
 // --------------------------------------------------
 const commands = [
-    // คำสั่งสร้างเมนูผู้ใช้พร้อมปุ่มกด
     new SlashCommandBuilder()
-        .setName('/setup-menu')
+        .setName('setup-menu')
         .setDescription('สร้างเมนูศูนย์ช่วยเหลือพร้อมปุ่มกด')
         .setDefaultMemberPermissions(PermissionFlagsBits.Administrator)
         .addStringOption(option =>
@@ -46,12 +45,11 @@ const commands = [
                 .setRequired(true))
         .addStringOption(option =>
             option.setName('image_url')
-                .setDescription('ลิงก์รูป Banner (ถ้ามี)')
+                .setDescription('ลิงก์รูป Banner (ใส่หรือไม่ใส่ก็ได้)')
                 .setRequired(false)),
 
-    // คำสั่งแอดมินจัดการสมาชิก
     new SlashCommandBuilder()
-        .setName(/action')
+        .setName('action')
         .setDescription('จัดการสมาชิก (Blacklist / Ban / Report)')
         .setDefaultMemberPermissions(PermissionFlagsBits.ModerateMembers)
         .addUserOption(option =>
@@ -66,10 +64,12 @@ const commands = [
 
 const rest = new REST({ version: '10' }).setToken(TOKEN);
 
+// --------------------------------------------------
+// 2. เมื่อบอทออนไลน์ สั่งลงทะเบียน Slash Commands
+// --------------------------------------------------
 client.on('ready', async () => {
     console.log(`🚀 บอทออนไลน์แล้วในชื่อ: ${client.user.tag}`);
     
-    // Register Slash Commands แบบ Global
     try {
         console.log('⏳ กำลังอัปเดต Slash Commands...');
         await rest.put(
@@ -83,88 +83,85 @@ client.on('ready', async () => {
 });
 
 // --------------------------------------------------
-// 2. ประมวลผลคำสั่ง Slash Commands
+// 3. ระบบประมวลผล Interaction ทั้งหมด (Commands, Menus, Buttons)
 // --------------------------------------------------
 client.on('interactionCreate', async (interaction) => {
-    if (!interaction.isChatInputCommand()) return;
+    
+    // --- 3.1 กรณีพิมพ์ Slash Command ---
+    if (interaction.isChatInputCommand()) {
+        const { commandName } = interaction;
 
-    const { commandName } = interaction;
+        // คำสั่ง /setup-menu
+        if (commandName === 'setup-menu') {
+            const title = interaction.options.getString('title');
+            const description = interaction.options.getString('description');
+            const imageUrl = interaction.options.getString('image_url');
 
-    // --- คำสั่ง /setup-menu ---
-    if (commandName === '/setup-menu') {
-        const title = interaction.options.getString('title');
-        const description = interaction.options.getString('description');
-        const imageUrl = interaction.options.getString('image_url');
+            const embed = new EmbedBuilder()
+                .setTitle(title)
+                .setDescription(description)
+                .setColor(0x0099FF)
+                .setTimestamp();
 
-        const embed = new EmbedBuilder()
-            .setTitle(title)
-            .setDescription(description)
-            .setColor(0x0099FF)
-            .setTimestamp();
+            if (imageUrl) embed.setImage(imageUrl);
 
-        if (imageUrl) embed.setImage(imageUrl);
+            const row = new ActionRowBuilder().addComponents(
+                new ButtonBuilder()
+                    .setCustomId('btn_user_report')
+                    .setLabel('🚨 แจ้งปัญหา / รายงาน')
+                    .setStyle(ButtonStyle.Danger),
+                new ButtonBuilder()
+                    .setCustomId('btn_user_suggest')
+                    .setLabel('💡 ข้อเสนอแนะ')
+                    .setStyle(ButtonStyle.Primary)
+            );
 
-        const row = new ActionRowBuilder().addComponents(
-            new ButtonBuilder()
-                .setCustomId('btn_user_report')
-                .setLabel('🚨 แจ้งปัญหา / รายงาน')
-                .setStyle(ButtonStyle.Danger),
-            new ButtonBuilder()
-                .setCustomId('btn_user_suggest')
-                .setLabel('💡 ข้อเสนอแนะ')
-                .setStyle(ButtonStyle.Primary)
-        );
-
-        await interaction.channel.send({ embeds: [embed], components: [row] });
-        await interaction.reply({ content: '✅ สร้างเมนูเรียบร้อยแล้ว!', ephemeral: true });
-    }
-
-    // --- คำสั่ง /action ---
-    if (commandName === 'action') {
-        if (ADMIN_CHANNEL_ID && interaction.channelId !== ADMIN_CHANNEL_ID) {
-            return interaction.reply({ content: '❌ สามารถใช้คำสั่งนี้ได้ในห้องแอดมินเท่านั้น!', ephemeral: true });
+            await interaction.channel.send({ embeds: [embed], components: [row] });
+            await interaction.reply({ content: '✅ สร้างเมนูเรียบร้อยแล้ว!', ephemeral: true });
         }
 
-        const targetUser = interaction.options.getUser('target');
-        const reason = interaction.options.getString('reason');
+        // คำสั่ง /action
+        if (commandName === 'action') {
+            if (ADMIN_CHANNEL_ID && interaction.channelId !== ADMIN_CHANNEL_ID) {
+                return interaction.reply({ content: '❌ สามารถใช้คำสั่งนี้ได้ในห้องแอดมินเท่านั้น!', ephemeral: true });
+            }
 
-        const selectMenu = new StringSelectMenuBuilder()
-            .setCustomId(`admin_select_${targetUser.id}_${encodeURIComponent(reason)}`)
-            .setPlaceholder('เลือกรายการดำเนินการ...')
-            .addOptions([
-                {
-                    label: '⛔ ลงบัญชีดำ (Blacklist)',
-                    description: 'ประกาศรายชื่อลงช่องบัญชีดำทันที',
-                    value: 'type_blacklist',
-                },
-                {
-                    label: '🔨 ลงโทษแบน / Mute (Ban/Timeout)',
-                    description: 'เลือกระยะเวลาการแบน หรือห้ามพิมพ์/ห้ามเปิดไมค์',
-                    value: 'type_ban',
-                },
-                {
-                    label: '📩 แจ้งเตือนข้อผิดพลาด (Report/DM)',
-                    description: 'ส่ง DM หาผู้ใช้ และบันทึกลงห้องกระทำผิด',
-                    value: 'type_report',
-                },
-            ]);
+            const targetUser = interaction.options.getUser('target');
+            const reason = interaction.options.getString('reason');
 
-        const row = new ActionRowBuilder().addComponents(selectMenu);
-        await interaction.reply({ 
-            content: `🎯 **จัดการผู้ใช้:** <@${targetUser.id}>\n📝 **เหตุผล:** ${reason}`, 
-            components: [row] 
-        });
+            const selectMenu = new StringSelectMenuBuilder()
+                .setCustomId(`admin_select_${targetUser.id}_${encodeURIComponent(reason)}`)
+                .setPlaceholder('เลือกรายการดำเนินการ...')
+                .addOptions([
+                    {
+                        label: '⛔ ลงบัญชีดำ (Blacklist)',
+                        description: 'ประกาศรายชื่อลงช่องบัญชีดำทันที',
+                        value: 'type_blacklist',
+                    },
+                    {
+                        label: '🔨 ลงโทษแบน / Mute (Ban/Timeout)',
+                        description: 'เลือกระยะเวลาการแบน หรือห้ามพิมพ์/ห้ามเปิดไมค์',
+                        value: 'type_ban',
+                    },
+                    {
+                        label: '📩 แจ้งเตือนข้อผิดพลาด (Report/DM)',
+                        description: 'ส่ง DM หาผู้ใช้ และบันทึกลงห้องกระทำผิด',
+                        value: 'type_report',
+                    },
+                ]);
+
+            const row = new ActionRowBuilder().addComponents(selectMenu);
+            await interaction.reply({ 
+                content: `🎯 **จัดการผู้ใช้:** <@${targetUser.id}>\n📝 **เหตุผล:** ${reason}`, 
+                components: [row] 
+            });
+        }
     }
-});
 
-// --------------------------------------------------
-// 3. ประมวลผล Dropdown & Buttons
-// --------------------------------------------------
-client.on('interactionCreate', async (interaction) => {
-    // --- จัดการ Dropdown Menu ของแอดมิน ---
+    // --- 3.2 กรณีเลือก Dropdown Menu ---
     if (interaction.isStringSelectMenu()) {
 
-        // เมนูหลัก
+        // เมนูหลักแอดมิน
         if (interaction.customId.startsWith('admin_select_')) {
             const [, , targetId, encodedReason] = interaction.customId.split('_');
             const reason = decodeURIComponent(encodedReason);
@@ -173,7 +170,7 @@ client.on('interactionCreate', async (interaction) => {
 
             if (!targetMember) return interaction.reply({ content: '❌ ไม่พบผู้ใช้คนนี้ในเซิร์ฟเวอร์', ephemeral: true });
 
-            // 1. บัญชีดำ (Blacklist)
+            // เลือก: บัญชีดำ
             if (selectedValue === 'type_blacklist') {
                 const blacklistChannel = interaction.guild.channels.cache.get(BLACKLIST_CHANNEL_ID);
                 
@@ -192,7 +189,7 @@ client.on('interactionCreate', async (interaction) => {
                 await interaction.update({ content: `✅ บันทึกรายชื่อ <@${targetId}> ลงห้องบัญชีดำเรียบร้อยแล้ว`, components: [] });
             }
 
-            // 2. แบน / Mute (Ban Options)
+            // เลือก: แบน / Mute
             if (selectedValue === 'type_ban') {
                 const banSubMenu = new StringSelectMenuBuilder()
                     .setCustomId(`sub_ban_${targetId}_${encodeURIComponent(reason)}`)
@@ -207,11 +204,10 @@ client.on('interactionCreate', async (interaction) => {
                 await interaction.update({ content: `⚙️ เลือกระดับการลงโทษสำหรับ <@${targetId}>:`, components: [row] });
             }
 
-            // 3. Report (DM ส่วนตัว + ลงห้องกระทำผิด)
+            // เลือก: Report (DM + ส่งลงห้องกระทำผิด)
             if (selectedValue === 'type_report') {
                 const reportChannel = interaction.guild.channels.cache.get(REPORT_LOG_CHANNEL_ID);
 
-                // ส่ง DM หาผู้ใช้
                 try {
                     const dmEmbed = new EmbedBuilder()
                         .setTitle('⚠️ การแจ้งเตือนการกระทำผิด')
@@ -224,7 +220,6 @@ client.on('interactionCreate', async (interaction) => {
                     console.log('ผู้ใช้นี้ปิดรับ DM');
                 }
 
-                // ประกาศลงห้องกระทำผิด
                 const logEmbed = new EmbedBuilder()
                     .setTitle('🚨 รายงานการกระทำผิด')
                     .setColor(0xFF0000)
@@ -240,7 +235,7 @@ client.on('interactionCreate', async (interaction) => {
             }
         }
 
-        // เมนูย่อยของการแบน (Ban Sub Menu)
+        // เมนูย่อย: เลือกระยะเวลาแบน
         if (interaction.customId.startsWith('sub_ban_')) {
             const [, , targetId, encodedReason] = interaction.customId.split('_');
             const reason = decodeURIComponent(encodedReason);
@@ -260,7 +255,7 @@ client.on('interactionCreate', async (interaction) => {
         }
     }
 
-    // --- จัดการปุ่มฝั่งผู้ใช้ (User Buttons) ---
+    // --- 3.3 กรณีผู้ใช้กดปุ่ม ---
     if (interaction.isButton()) {
         if (interaction.customId === 'btn_user_report') {
             await interaction.reply({ content: '📩 กรุณาติดต่อแอดมินหรือส่งรายละเอียดปัญหาที่คุณพบได้ที่ห้องนี้ครับ', ephemeral: true });
