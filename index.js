@@ -329,4 +329,70 @@ client.on('interactionCreate', async (interaction) => {
     }
 });
 
+// --------------------------------------------------
+// ระบบเช็กสมาชิกที่ไม่แอคทีฟ / คนซุ่มด้วยคำสั่ง !status
+// --------------------------------------------------
+client.on('messageCreate', async (message) => {
+    // ป้องกันไม่ให้บอทอ่านข้อความตัวเอง หรือข้อความที่ไม่ใช่คำสั่ง !status
+    if (message.author.bot || !message.content.startsWith('!status')) return;
+
+    // เช็กสิทธิ์ว่าต้องเป็นแอดมินหรือผู้จัดการสมาชิกเท่านั้น
+    if (!message.member.permissions.has(PermissionFlagsBits.ModerateMembers)) {
+        return message.reply('❌ คุณไม่มีสิทธิ์ใช้คำสั่งนี้ (ต้องมีสิทธิ์ Moderate Members ขึ้นไป)');
+    }
+
+    const waitMsg = await message.reply('🔄 กำลังประมวลผลและเช็กข้อมูลสมาชิกทั้งหมดในเซิร์ฟเวอร์...');
+
+    try {
+        const guild = message.guild;
+        await guild.members.fetch(); // ดึงข้อมูลสมาชิกทั้งหมด
+
+        const now = Date.now();
+        const members = guild.members.cache.filter(m => !m.user.bot); // ดึงเฉพาะคนจริง ไม่รวมบอท
+
+        // ตัวแปรจัดกลุ่มสมาชิกตามจำนวนวันที่อยู่ในเซิร์ฟเวอร์
+        let over30Days = 0;  // เกิน 1 เดือน (30 วัน)
+        let over90Days = 0;  // เกิน 3 เดือน (90 วัน)
+        let over180Days = 0; // เกิน 6 เดือน (180 วัน)
+        let over365Days = 0; // เกิน 1 ปี (365 วัน)
+
+        members.forEach(member => {
+            const joinedTimestamp = member.joinedTimestamp;
+            if (!joinedTimestamp) return;
+
+            const daysInServer = Math.floor((now - joinedTimestamp) / (1000 * 60 * 60 * 24));
+
+            if (daysInServer >= 365) over365Days++;
+            else if (daysInServer >= 180) over180Days++;
+            else if (daysInServer >= 90) over90Days++;
+            else if (daysInServer >= 30) over30Days++;
+        });
+
+        // เช็กจำนวนคนที่ไม่มี Role (เสี่ยงที่จะเป็นบัญชีร้าง/ไม่ใช้งาน)
+        const noRoleMembers = members.filter(m => m.roles.cache.size <= 1).size; // size 1 คือมีแค่ยศ @everyone
+
+        const embed = new EmbedBuilder()
+            .setTitle(`🔍 สรุปสถิติสมาชิกที่ไม่เคลื่อนไหว / สมาชิกเก่า`)
+            .setColor(0xE67E22)
+            .setThumbnail(guild.iconURL({ dynamic: true }))
+            .setDescription(`รายงานข้อมูลสถิติตามระยะเวลาที่อยู่ในเซิร์ฟเวอร์ **${guild.name}**`)
+            .addFields(
+                { name: '👥 สมาชิกที่เป็นคนทั้งหมด', value: `\`${members.size}\` คน`, inline: false },
+                { name: '❓ สมาชิกที่ไม่มี Roll ใดๆ (เสี่ยงบัญชีร้าง)', value: `\`${noRoleMembers}\` คน`, inline: false },
+                { name: '📅 อยู่มาเกิน 1 เดือน (30+ วัน)', value: `\`${over30Days}\` คน`, inline: true },
+                { name: '🗓️ อยู่มาเกิน 3 เดือน (90+ วัน)', value: `\`${over90Days}\` คน`, inline: true },
+                { name: '⏳ อยู่มาเกิน 6 เดือน (180+ วัน)', value: `\`${over180Days}\` คน`, inline: true },
+                { name: '🏆 อยู่มาเกิน 1 ปี (365+ วัน)', value: `\`${over365Days}\` คน`, inline: true }
+            )
+            .setFooter({ text: `เช็กโดย ${message.author.tag}` })
+            .setTimestamp();
+
+        await waitMsg.edit({ content: '✅ ตรวจสอบข้อมูลสำเร็จ!', embeds: [embed] });
+
+    } catch (error) {
+        console.error('Error in !status command:', error);
+        await waitMsg.edit('❌ เกิดข้อผิดพลาดขณะดึงข้อมูลสมาชิก');
+    }
+});
+
 client.login(TOKEN);
