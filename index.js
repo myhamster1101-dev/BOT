@@ -49,6 +49,29 @@ const commands = [
         .setName('setup-admin')
         .setDescription('ตั้งค่าและสร้างปุ่มจัดการผู้ใช้ (สำหรับแอดมิน)')
         .setDefaultMemberPermissions(PermissionFlagsBits.ModerateMembers)
+
+    new SlashCommandBuilder()
+        .setName('setup_dropdown')
+        .setDescription('เพิ่ม Dropdown เลือกยศใส่ข้อความเดิม (กำหนดข้อความและยศเองได้เลย)')
+        .setDefaultMemberPermissions(PermissionFlagsBits.Administrator)
+        .addStringOption(option =>
+            option.setName('message_id')
+                .setDescription('ID ของข้อความเดิมที่ต้องการใส่ Dropdown')
+                .setRequired(true))
+        .addStringOption(option =>
+            option.setName('placeholder')
+                .setDescription('ข้อความตัวอย่างบน Dropdown (เช่น: 🎮 เลือกยศเกมของคุณที่นี่...)')
+                .setRequired(true))
+        .addRoleOption(option => option.setName('role1').setDescription('ยศที่ 1').setRequired(true))
+        .addRoleOption(option => option.setName('role2').setDescription('ยศที่ 2').setRequired(false))
+        .addRoleOption(option => option.setName('role3').setDescription('ยศที่ 3').setRequired(false))
+        .addRoleOption(option => option.setName('role4').setDescription('ยศที่ 4').setRequired(false))
+        .addRoleOption(option => option.setName('role5').setDescription('ยศที่ 5').setRequired(false))
+        .addRoleOption(option => option.setName('role6').setDescription('ยศที่ 6').setRequired(false))
+        .addRoleOption(option => option.setName('role7').setDescription('ยศที่ 7').setRequired(false))
+        .addRoleOption(option => option.setName('role8').setDescription('ยศที่ 8').setRequired(false))
+        .addRoleOption(option => option.setName('role9').setDescription('ยศที่ 9').setRequired(false))
+        .addRoleOption(option => option.setName('role10').setDescription('ยศที่ 10').setRequired(false)),
 ].map(command => command.toJSON());
 
 const rest = new REST({ version: '10' }).setToken(TOKEN);
@@ -117,6 +140,46 @@ client.on('interactionCreate', async (interaction) => {
                     'จัดการผู้ใช้'
                 );
                 return await interaction.showModal(modal);
+
+            if (commandName === 'setup_dropdown') {
+            await interaction.deferReply({ ephemeral: true });
+
+            const messageId = interaction.options.getString('message_id');
+            const placeholder = interaction.options.getString('placeholder');
+
+            // ดึงยศทั้งหมดที่ผู้ใช้เลือกในออปชันคำสั่ง
+            const roles = [];
+            for (let i = 1; i <= 10; i++) {
+                const role = interaction.options.getRole(`role${i}`);
+                if (role) roles.push(role);
+            }
+
+            try {
+                // ดึงข้อความเดิมจากช่องปัจจุบัน
+                const targetMessage = await interaction.channel.messages.fetch(messageId);
+
+                // สร้างตัวเลือก Dropdown จากยศที่แท็กในคำสั่งอัตโนมัติ
+                const selectMenu = new StringSelectMenuBuilder()
+                    .setCustomId('select_dynamic_roles')
+                    .setPlaceholder(placeholder)
+                    .setMinValues(0)
+                    .setMaxValues(roles.length)
+                    .addOptions(
+                        roles.map(role => 
+                            new StringSelectMenuOptionBuilder()
+                                .setLabel(role.name)
+                                .setValue(role.id)
+                        )
+                    );
+
+                const row = new ActionRowBuilder().addComponents(selectMenu);
+
+                await targetMessage.edit({ components: [row] });
+                return await interaction.editReply({ content: `✅ เพิ่ม Dropdown รวม ${roles.length} ยศ ใส่ข้อความเป้าหมายเรียบร้อยแล้ว!` });
+
+            } catch (err) {
+                console.error(err);
+                return await interaction.editReply({ content: '❌ หาข้อความไม่พบ! กรุณาเช็กว่าคุณพิมพ์คำสั่งใน **ห้องเดียวกับข้อความนั้น** หรือไม่' });
             }
         }
 
