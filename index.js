@@ -493,5 +493,39 @@ client.on('messageCreate', async (message) => {
         console.error('Error in !status command:', error);
         await waitMsg.edit('❌ เกิดข้อผิดพลาดขณะประมวลผลข้อมูล');
     }
+
+// --------------------------------------------------
+// ตัวจัดการแจกยศอัตโนมัติเมื่อสมาชิกเลือกยศใน Dropdown
+// --------------------------------------------------
+if (interaction.isStringSelectMenu() && interaction.customId === 'select_dynamic_roles') {
+    await interaction.deferReply({ ephemeral: true });
+
+    const selectedRoleIds = interaction.values;
+    const member = interaction.member;
+
+    // ดึง ID ยศทั้งหมดที่มีอยู่ใน Dropdown ชุดนั้นๆ
+    const allMenuRoleIds = interaction.component.options.map(opt => opt.value);
+
+    try {
+        // ถอดยศในกลุ่มนี้ที่ไม่ได้ถูกเลือกออก
+        for (const roleId of allMenuRoleIds) {
+            if (!selectedRoleIds.includes(roleId) && member.roles.cache.has(roleId)) {
+                await member.roles.remove(roleId).catch(() => null);
+            }
+        }
+
+        // เพิ่มยศใหม่ตามที่ถูกเลือก
+        for (const roleId of selectedRoleIds) {
+            if (!member.roles.cache.has(roleId)) {
+                await member.roles.add(roleId).catch(() => null);
+            }
+        }
+
+        return await interaction.editReply({ content: '✅ อัปเดตยศของคุณเรียบร้อยแล้ว!' });
+    } catch (error) {
+        console.error(error);
+        return await interaction.editReply({ content: '❌ เกิดข้อผิดพลาดในการปรับเปลี่ยนยศ กรุณาเช็กสิทธิ์หรือลำดับชั้นยศของบอท' });
+    }
+}            
 });
-client.login(TOKEN);
+client.login(process.env.DISCORD_TOKEN);
