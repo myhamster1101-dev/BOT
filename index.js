@@ -385,7 +385,7 @@ client.on('interactionCreate', async (interaction) => {
                     modal.addComponents(new ActionRowBuilder().addComponents(durationInput));
                     return await interaction.showModal(modal);
                 }
-            catch (err) {
+            } catch (err) {
                 console.error('Interaction Exception:', err);
             }
         });
