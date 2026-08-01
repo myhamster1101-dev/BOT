@@ -6,6 +6,7 @@ const {
     ButtonStyle, 
     EmbedBuilder, 
     StringSelectMenuBuilder,
+    StringSelectMenuOptionBuilder,
     ModalBuilder,
     TextInputBuilder,
     TextInputStyle,
@@ -140,43 +141,45 @@ client.on('interactionCreate', async (interaction) => {
                     'จัดการผู้ใช้'
                 );
                 return await interaction.showModal(modal);
-
-            if (commandName === 'setup_dropdown') {
-            await interaction.deferReply({ ephemeral: true });
-
-            const messageId = interaction.options.getString('message_id');
-            const placeholder = interaction.options.getString('placeholder');
-
-            const roles = [];
-            for (let i = 1; i <= 10; i++) {
-                const role = interaction.options.getRole(`role${i}`);
-                if (role) roles.push(role);
             }
 
-            try {
-                const targetMessage = await interaction.channel.messages.fetch(messageId);
+            if (interaction.commandName === 'setup_dropdown') {
+                await interaction.deferReply({ ephemeral: true });
 
-                const selectMenu = new StringSelectMenuBuilder()
-                    .setCustomId('select_dynamic_roles')
-                    .setPlaceholder(placeholder)
-                    .setMinValues(0)
-                    .setMaxValues(roles.length)
-                    .addOptions(
-                        roles.map(role => 
-                            new StringSelectMenuOptionBuilder()
-                                .setLabel(role.name)
-                                .setValue(role.id)
-                        )
-                    );
+                const messageId = interaction.options.getString('message_id');
+                const placeholder = interaction.options.getString('placeholder');
 
-                const row = new ActionRowBuilder().addComponents(selectMenu);
+                const roles = [];
+                for (let i = 1; i <= 10; i++) {
+                    const role = interaction.options.getRole(`role${i}`);
+                    if (role) roles.push(role);
+                }
 
-                await targetMessage.edit({ components: [row] });
-                return await interaction.editReply({ content: `✅ เพิ่ม Dropdown รวม ${roles.length} ยศ เรียบร้อยแล้ว!` });
+                try {
+                    const targetMessage = await interaction.channel.messages.fetch(messageId);
 
-            } catch (err) {
-                console.error(err);
-                return await interaction.editReply({ content: '❌ หาข้อความไม่พบ! (ต้องใช้คำสั่งในห้องเดียวกับข้อความนั้น)' });
+                    const selectMenu = new StringSelectMenuBuilder()
+                        .setCustomId('select_dynamic_roles')
+                        .setPlaceholder(placeholder)
+                        .setMinValues(0)
+                        .setMaxValues(roles.length)
+                        .addOptions(
+                            roles.map(role => 
+                                new StringSelectMenuOptionBuilder()
+                                    .setLabel(role.name)
+                                    .setValue(role.id)
+                            )
+                        );
+
+                    const row = new ActionRowBuilder().addComponents(selectMenu);
+
+                    await targetMessage.edit({ components: [row] });
+                    return await interaction.editReply({ content: `✅ เพิ่ม Dropdown รวม ${roles.length} ยศ เรียบร้อยแล้ว!` });
+
+                } catch (err) {
+                    console.error(err);
+                    return await interaction.editReply({ content: '❌ หาข้อความไม่พบ! (ต้องใช้คำสั่งในห้องเดียวกับข้อความนั้น)' });
+                }
             }
         }
 
@@ -385,28 +388,56 @@ client.on('interactionCreate', async (interaction) => {
                     modal.addComponents(new ActionRowBuilder().addComponents(durationInput));
                     return await interaction.showModal(modal);
                 }
-            } catch (err) {
-                console.error('Interaction Exception:', err);
             }
-        });
+
+            // ตัวรับค่าแจกยศอัตโนมัติจาก Dropdown
+            if (interaction.customId === 'select_dynamic_roles') {
+                await interaction.deferReply({ ephemeral: true });
+
+                const selectedRoleIds = interaction.values;
+                const member = interaction.member;
+
+                const allMenuRoleIds = interaction.component.options.map(opt => opt.value);
+
+                try {
+                    for (const roleId of allMenuRoleIds) {
+                        if (!selectedRoleIds.includes(roleId) && member.roles.cache.has(roleId)) {
+                            await member.roles.remove(roleId).catch(() => null);
+                        }
+                    }
+
+                    for (const roleId of selectedRoleIds) {
+                        if (!member.roles.cache.has(roleId)) {
+                            await member.roles.add(roleId).catch(() => null);
+                        }
+                    }
+
+                    return await interaction.editReply({ content: '✅ อัปเดตยศของคุณเรียบร้อยแล้ว!' });
+                } catch (error) {
+                    console.error(error);
+                    return await interaction.editReply({ content: '❌ เกิดข้อผิดพลาดในการปรับเปลี่ยนยศ' });
+                }
+            }
+        }
+    } catch (err) {
+        console.error('Interaction Exception:', err);
+    }
+});
 
 // --------------------------------------------------
-// ระบบเช็กสมาชิก !status (แสดงรายชื่อสำหรับคัดคนออก + ส่งลงห้องปฏิบัติการ)
+// ระบบเช็กสมาชิก !status
 // --------------------------------------------------
 client.on('messageCreate', async (message) => {
     if (message.author.bot || !message.content.startsWith('!status')) return;
 
-    // อ่านค่า ID ห้องจาก Environment Variables
     const COMMAND_CHANNEL_ID = process.env.COMMAND_CHANNEL_ID;
     const LOG_CHANNEL_ID = process.env.LOG_CHANNEL_ID;
 
-    // 1. ตรวจสอบห้องสั่งการ
     if (COMMAND_CHANNEL_ID && message.channel.id !== COMMAND_CHANNEL_ID) {
         return message.reply(`⚠️ คำสั่งนี้ใช้ได้เฉพาะในห้องสั่งการ <#${COMMAND_CHANNEL_ID}> เท่านั้นครับ!`)
             .then(msg => setTimeout(() => msg.delete().catch(() => null), 5000));
     }
 
-    // 2. เช็กสิทธิ์แอดมิน
     if (!message.member.permissions.has(PermissionFlagsBits.ModerateMembers)) {
         return message.reply('❌ คุณไม่มีสิทธิ์ใช้คำสั่งนี้');
     }
@@ -415,18 +446,16 @@ client.on('messageCreate', async (message) => {
 
     try {
         const guild = message.guild;
-        await guild.members.fetch(); // ดึงสมาชิกทุกคน
+        await guild.members.fetch();
 
         const now = Date.now();
-        const members = guild.members.cache.filter(m => !m.user.bot); // ดึงเฉพาะคนจริง
+        const members = guild.members.cache.filter(m => !m.user.bot);
 
-        // รายชื่อสมาชิกแยกตามระยะเวลา
         const inactive30Days = [];
         const inactive90Days = [];
         const noRoleList = [];
 
         members.forEach(member => {
-            // เช็กสมาชิกไม่มียศ
             if (member.roles.cache.size <= 1) {
                 noRoleList.push(`<@${member.id}>`);
             }
@@ -441,7 +470,6 @@ client.on('messageCreate', async (message) => {
             }
         });
 
-        // ฟังก์ชันตัดข้อความไม่ให้ยาวเกินขีดจำกัด Discord (2048 char)
         const formatList = (arr) => {
             if (arr.length === 0) return 'ไม่มี';
             const text = arr.join('\n');
@@ -473,14 +501,12 @@ client.on('messageCreate', async (message) => {
             .setFooter({ text: `คำสั่งโดย: ${message.author.tag}` })
             .setTimestamp();
 
-        // 3. ค้นหาห้องปฏิบัติการเพื่อส่งผลลัพธ์
         const logChannel = LOG_CHANNEL_ID ? guild.channels.cache.get(LOG_CHANNEL_ID) : null;
 
         if (logChannel) {
             await logChannel.send({ embeds: [embed] });
             await waitMsg.edit(`✅ ส่งรายชื่อและผลการตรวจสอบไปที่ห้องปฏิบัติการ <#${LOG_CHANNEL_ID}> เรียบร้อยแล้ว!`);
         } else {
-            // กรณีไม่มี LOG_CHANNEL_ID ให้ส่งที่ห้องเดิม
             await waitMsg.edit({ content: '⚠️ ไม่พบการตั้งค่า `LOG_CHANNEL_ID` ผลลัพธ์จึงแสดงในห้องนี้:', embeds: [embed] });
         }
 
@@ -488,39 +514,6 @@ client.on('messageCreate', async (message) => {
         console.error('Error in !status command:', error);
         await waitMsg.edit('❌ เกิดข้อผิดพลาดขณะประมวลผลข้อมูล');
     }
-
-// --------------------------------------------------
-// ตัวจัดการแจกยศอัตโนมัติเมื่อสมาชิกเลือกยศใน Dropdown
-// --------------------------------------------------
-if (interaction.isStringSelectMenu() && interaction.customId === 'select_dynamic_roles') {
-    await interaction.deferReply({ ephemeral: true });
-
-    const selectedRoleIds = interaction.values;
-    const member = interaction.member;
-
-    // ดึง ID ยศทั้งหมดที่มีอยู่ใน Dropdown ชุดนั้นๆ
-    const allMenuRoleIds = interaction.component.options.map(opt => opt.value);
-
-    try {
-        // ถอดยศในกลุ่มนี้ที่ไม่ได้ถูกเลือกออก
-        for (const roleId of allMenuRoleIds) {
-            if (!selectedRoleIds.includes(roleId) && member.roles.cache.has(roleId)) {
-                await member.roles.remove(roleId).catch(() => null);
-            }
-        }
-
-        // เพิ่มยศใหม่ตามที่ถูกเลือก
-        for (const roleId of selectedRoleIds) {
-            if (!member.roles.cache.has(roleId)) {
-                await member.roles.add(roleId).catch(() => null);
-            }
-        }
-
-        return await interaction.editReply({ content: '✅ อัปเดตยศของคุณเรียบร้อยแล้ว!' });
-    } catch (error) {
-        console.error(error);
-        return await interaction.editReply({ content: '❌ เกิดข้อผิดพลาดในการปรับเปลี่ยนยศ กรุณาเช็กสิทธิ์หรือลำดับชั้นยศของบอท' });
-    }
-}            
 });
+
 client.login(process.env.DISCORD_TOKEN);
