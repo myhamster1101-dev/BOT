@@ -385,11 +385,10 @@ client.on('interactionCreate', async (interaction) => {
                     modal.addComponents(new ActionRowBuilder().addComponents(durationInput));
                     return await interaction.showModal(modal);
                 }
+            catch (err) {
+                console.error('Interaction Exception:', err);
             }
-        } catch (err) {
-        console.error('Interaction Exception:', err);
-    }
-});
+        });
 
 // --------------------------------------------------
 // ระบบเช็กสมาชิก !status (แสดงรายชื่อสำหรับคัดคนออก + ส่งลงห้องปฏิบัติการ)
