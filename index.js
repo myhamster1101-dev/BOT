@@ -19,8 +19,8 @@ const client = new Client({
     intents: [
         GatewayIntentBits.Guilds,
         GatewayIntentBits.GuildMessages,
-        GatewayIntentBits.GuildMembers
-        GatewayIntentBits.MessageContent
+        GatewayIntentBits.GuildMembers,
+        GatewayIntentBits.MessageContent,
     ]
 });
 
@@ -30,6 +30,8 @@ const BLACKLIST_CHANNEL_ID = process.env.BLACKLIST_CHANNEL_ID;
 const REPORT_LOG_CHANNEL_ID = process.env.REPORT_LOG_CHANNEL_ID;
 const BAN_LOG_CHANNEL_ID = process.env.BAN_LOG_CHANNEL_ID;
 const BANNED_ROLE_ID = process.env.BANNED_ROLE_ID;
+const COMMAND_CHANNEL_ID = process.env.COMMAND_CHANNEL_ID;
+const LOG_CHANNEL_ID = process.env.LOG_CHANNEL_ID;
 
 // 1. Slash Commands Definition
 const commands = [
