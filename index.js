@@ -32,7 +32,12 @@ const REPORT_LOG_CHANNEL_ID = process.env.REPORT_LOG_CHANNEL_ID;
 const BAN_LOG_CHANNEL_ID = process.env.BAN_LOG_CHANNEL_ID;
 const BANNED_ROLE_ID = process.env.BANNED_ROLE_ID;
 
-// 1. Slash Commands Definition (บังคับขึ้นช่อง image_url ทันที!)
+// ⚙️ [ตั้งค่าระบบรับยศด้วยการพิมพ์จุด]
+// ใส่ ID ห้องรับยศ และ ID ยศที่ต้องการแจก ตรงนี้ได้เลยครับ!
+const AUTO_ROLE_CHANNEL_ID = 'ใส่_ID_ห้องรับยศตรงนี้'; 
+const AUTO_GIVE_ROLE_ID = 'ใส่_ID_ยศที่ต้องการแจกตรงนี้'; 
+
+// 1. Slash Commands Definition
 const commands = [
     new SlashCommandBuilder()
         .setName('setup-ticket')
@@ -64,7 +69,7 @@ const commands = [
         .addStringOption(option =>
             option.setName('image_url')
                 .setDescription('ลิงก์รูปภาพ Banner (ถ้าไม่ใส่พิมพ์ - หรือเว้นว่างได้)')
-                .setRequired(true)) // 🔥 ตั้งเป็น true เพื่อให้โผล่ขึ้นมาให้กรอกเลยทันที ไม่ต้องกดหา
+                .setRequired(true))
         .addRoleOption(option => option.setName('role1').setDescription('ยศที่ 1').setRequired(true))
         .addRoleOption(option => option.setName('role2').setDescription('ยศที่ 2').setRequired(false))
         .addRoleOption(option => option.setName('role3').setDescription('ยศที่ 3').setRequired(false))
@@ -86,6 +91,48 @@ client.on('ready', async () => {
         console.log('✅ ลงทะเบียน Slash Commands เรียบร้อย!');
     } catch (error) {
         console.error('❌ Error Commands:', error);
+    }
+});
+
+// --------------------------------------------------
+// 🔴 ระบบพิมพ์จุด (.) เพื่อรับยศอัตโนมัติ
+// --------------------------------------------------
+client.on('messageCreate', async (message) => {
+    if (message.author.bot || !message.guild) return;
+
+    // ตรวจสอบว่าพิมพ์ในห้องรับยศที่กำหนดไว้หรือไม่
+    if (message.channel.id === AUTO_ROLE_CHANNEL_ID) {
+        
+        // ถ้าพิมพ์จุด . (หรือพิมพ์ข้อความอะไรก็ตามในห้องนี้)
+        if (message.content.trim() === '.' || message.content.length > 0) {
+            
+            // ลบข้อความที่สมาชิกพิมพ์ทันทีเพื่อความสะอาดของห้อง
+            await message.delete().catch(() => null);
+
+            try {
+                const role = message.guild.roles.cache.get(AUTO_GIVE_ROLE_ID);
+                if (!role) {
+                    console.log('❌ ไม่พบ ID ยศที่ตั้งค่าไว้');
+                    return;
+                }
+
+                // เช็กว่ามียศอยู่แล้วหรือไม่
+                if (message.member.roles.cache.has(AUTO_GIVE_ROLE_ID)) {
+                    return message.channel.send(`⚠️ <@${message.author.id}> คุณมียศ **${role.name}** อยู่แล้วครับ!`)
+                        .then(msg => setTimeout(() => msg.delete().catch(() => null), 4000));
+                }
+
+                // ให้ยศสมาชิก
+                await message.member.roles.add(role);
+
+                // ส่งข้อความแจ้งเตือน แล้วลบออกใน 5 วินาที
+                return message.channel.send(`🎉 ยินดีต้อนรับ <@${message.author.id}> ! บอทได้มอบยศ **${role.name}** ให้เรียบร้อยแล้วครับ ✅`)
+                    .then(msg => setTimeout(() => msg.delete().catch(() => null), 5000));
+
+            } catch (error) {
+                console.error('❌ เกิดข้อผิดพลาดในการให้ยศ:', error);
+            }
+        }
     }
 });
 
@@ -159,7 +206,6 @@ client.on('interactionCreate', async (interaction) => {
                 }
 
                 try {
-                    // 🔍 1. ค้นหาข้อความจากทุกห้องในเซิร์ฟเวอร์
                     let targetMessage = null;
                     targetMessage = await interaction.channel.messages.fetch(messageId).catch(() => null);
 
@@ -184,7 +230,6 @@ client.on('interactionCreate', async (interaction) => {
                         return await interaction.editReply({ content: '❌ หาข้อความไม่พบ! กรุณาตรวจสอบ ID ข้อความอีกครั้ง' });
                     }
 
-                    // 🎛️ 2. สร้าง Dropdown เลือกยศ
                     const selectMenu = new StringSelectMenuBuilder()
                         .setCustomId('select_dynamic_roles')
                         .setPlaceholder(placeholder)
@@ -200,7 +245,6 @@ client.on('interactionCreate', async (interaction) => {
 
                     const row = new ActionRowBuilder().addComponents(selectMenu);
 
-                    // 🖼️ 3. จัดการรูปภาพ
                     let embedsToUse = [...(targetMessage.embeds || [])];
                     if (imageUrl && imageUrl.startsWith('http')) {
                         if (embedsToUse.length > 0) {
@@ -212,7 +256,6 @@ client.on('interactionCreate', async (interaction) => {
                         }
                     }
 
-                    // 🔄 4. ตรวจสอบผู้สร้างข้อความ
                     if (targetMessage.author.id === client.user.id) {
                         await targetMessage.edit({ embeds: embedsToUse, components: [row] });
                         return await interaction.editReply({ content: `✅ แก้ไขข้อความและอัปเดตรูปภาพเรียบร้อย!` });
@@ -227,7 +270,7 @@ client.on('interactionCreate', async (interaction) => {
                         await targetMessage.channel.send(payload);
 
                         return await interaction.editReply({ 
-                            content: `✅ บอทได้ทำการสร้างข้อความใหม่พร้อมแนบ Dropdown และรูปภาพในห้อง <#${targetMessage.channel.id}> ให้แล้วครับ! (ลบข้อความเก่าทิ้งได้เลย)` 
+                            content: `✅ บอทได้ทำการสร้างข้อความใหม่พร้อมแนบ Dropdown และรูปภาพในห้อง <#${targetMessage.channel.id}> ให้แล้วครับ!` 
                         });
                     }
 
