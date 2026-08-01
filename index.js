@@ -333,69 +333,102 @@ client.on('interactionCreate', async (interaction) => {
 });
 
 // --------------------------------------------------
-// ระบบเช็กสมาชิกที่ไม่แอคทีฟ / คนซุ่มด้วยคำสั่ง !status
+// ระบบเช็กสมาชิก !status (แสดงรายชื่อสำหรับคัดคนออก + ส่งลงห้องปฏิบัติการ)
 // --------------------------------------------------
 client.on('messageCreate', async (message) => {
-    // ป้องกันไม่ให้บอทอ่านข้อความตัวเอง หรือข้อความที่ไม่ใช่คำสั่ง !status
     if (message.author.bot || !message.content.startsWith('!status')) return;
 
-    // เช็กสิทธิ์ว่าต้องเป็นแอดมินหรือผู้จัดการสมาชิกเท่านั้น
-    if (!message.member.permissions.has(PermissionFlagsBits.ModerateMembers)) {
-        return message.reply('❌ คุณไม่มีสิทธิ์ใช้คำสั่งนี้ (ต้องมีสิทธิ์ Moderate Members ขึ้นไป)');
+    // อ่านค่า ID ห้องจาก Environment Variables
+    const COMMAND_CHANNEL_ID = process.env.COMMAND_CHANNEL_ID;
+    const LOG_CHANNEL_ID = process.env.LOG_CHANNEL_ID;
+
+    // 1. ตรวจสอบห้องสั่งการ
+    if (COMMAND_CHANNEL_ID && message.channel.id !== COMMAND_CHANNEL_ID) {
+        return message.reply(`⚠️ คำสั่งนี้ใช้ได้เฉพาะในห้องสั่งการ <#${COMMAND_CHANNEL_ID}> เท่านั้นครับ!`)
+            .then(msg => setTimeout(() => msg.delete().catch(() => null), 5000));
     }
 
-    const waitMsg = await message.reply('🔄 กำลังประมวลผลและเช็กข้อมูลสมาชิกทั้งหมดในเซิร์ฟเวอร์...');
+    // 2. เช็กสิทธิ์แอดมิน
+    if (!message.member.permissions.has(PermissionFlagsBits.ModerateMembers)) {
+        return message.reply('❌ คุณไม่มีสิทธิ์ใช้คำสั่งนี้');
+    }
+
+    const waitMsg = await message.reply('🔄 กำลังประมวลผลและรวบรวมรายชื่อสมาชิกที่ไม่เคลื่อนไหว...');
 
     try {
         const guild = message.guild;
-        await guild.members.fetch(); // ดึงข้อมูลสมาชิกทั้งหมด
+        await guild.members.fetch(); // ดึงสมาชิกทุกคน
 
         const now = Date.now();
-        const members = guild.members.cache.filter(m => !m.user.bot); // ดึงเฉพาะคนจริง ไม่รวมบอท
+        const members = guild.members.cache.filter(m => !m.user.bot); // ดึงเฉพาะคนจริง
 
-        // ตัวแปรจัดกลุ่มสมาชิกตามจำนวนวันที่อยู่ในเซิร์ฟเวอร์
-        let over30Days = 0;  // เกิน 1 เดือน (30 วัน)
-        let over90Days = 0;  // เกิน 3 เดือน (90 วัน)
-        let over180Days = 0; // เกิน 6 เดือน (180 วัน)
-        let over365Days = 0; // เกิน 1 ปี (365 วัน)
+        // รายชื่อสมาชิกแยกตามระยะเวลา
+        const inactive30Days = [];
+        const inactive90Days = [];
+        const noRoleList = [];
 
         members.forEach(member => {
-            const joinedTimestamp = member.joinedTimestamp;
-            if (!joinedTimestamp) return;
+            // เช็กสมาชิกไม่มียศ
+            if (member.roles.cache.size <= 1) {
+                noRoleList.push(`<@${member.id}>`);
+            }
 
-            const daysInServer = Math.floor((now - joinedTimestamp) / (1000 * 60 * 60 * 24));
+            if (!member.joinedTimestamp) return;
+            const daysInServer = Math.floor((now - member.joinedTimestamp) / (1000 * 60 * 60 * 24));
 
-            if (daysInServer >= 365) over365Days++;
-            else if (daysInServer >= 180) over180Days++;
-            else if (daysInServer >= 90) over90Days++;
-            else if (daysInServer >= 30) over30Days++;
+            if (daysInServer >= 90) {
+                inactive90Days.push(`<@${member.id}> (${daysInServer} วัน)`);
+            } else if (daysInServer >= 30) {
+                inactive30Days.push(`<@${member.id}> (${daysInServer} วัน)`);
+            }
         });
 
-        // เช็กจำนวนคนที่ไม่มี Role (เสี่ยงที่จะเป็นบัญชีร้าง/ไม่ใช้งาน)
-        const noRoleMembers = members.filter(m => m.roles.cache.size <= 1).size; // size 1 คือมีแค่ยศ @everyone
+        // ฟังก์ชันตัดข้อความไม่ให้ยาวเกินขีดจำกัด Discord (2048 char)
+        const formatList = (arr) => {
+            if (arr.length === 0) return 'ไม่มี';
+            const text = arr.join('\n');
+            return text.length > 1024 ? text.substring(0, 1000) + '\n...และอื่นๆ อีกหลายคน' : text;
+        };
 
         const embed = new EmbedBuilder()
-            .setTitle(`🔍 สรุปสถิติสมาชิกที่ไม่เคลื่อนไหว / สมาชิกเก่า`)
-            .setColor(0xE67E22)
+            .setTitle(`🚨 [รายชื่อสมาชิกสำหรับคัดออก] - ${guild.name}`)
+            .setColor(0xE74C3C)
             .setThumbnail(guild.iconURL({ dynamic: true }))
-            .setDescription(`รายงานข้อมูลสถิติตามระยะเวลาที่อยู่ในเซิร์ฟเวอร์ **${guild.name}**`)
+            .setDescription(`📊 **สมาชิกคนจริงทั้งหมด:** \`${members.size}\` คน`)
             .addFields(
-                { name: '👥 สมาชิกที่เป็นคนทั้งหมด', value: `\`${members.size}\` คน`, inline: false },
-                { name: '❓ สมาชิกที่ไม่มี Roll ใดๆ (เสี่ยงบัญชีร้าง)', value: `\`${noRoleMembers}\` คน`, inline: false },
-                { name: '📅 อยู่มาเกิน 1 เดือน (30+ วัน)', value: `\`${over30Days}\` คน`, inline: true },
-                { name: '🗓️ อยู่มาเกิน 3 เดือน (90+ วัน)', value: `\`${over90Days}\` คน`, inline: true },
-                { name: '⏳ อยู่มาเกิน 6 เดือน (180+ วัน)', value: `\`${over180Days}\` คน`, inline: true },
-                { name: '🏆 อยู่มาเกิน 1 ปี (365+ วัน)', value: `\`${over365Days}\` คน`, inline: true }
+                { 
+                    name: `❓ ไม่มี Role ใดๆ (${noRoleList.length} คน)`, 
+                    value: formatList(noRoleList), 
+                    inline: false 
+                },
+                { 
+                    name: `🗓️ อยู่มาเกิน 3 เดือน / 90+ วัน (${inactive90Days.length} คน)`, 
+                    value: formatList(inactive90Days), 
+                    inline: false 
+                },
+                { 
+                    name: `📅 อยู่มาเกิน 1 เดือน / 30+ วัน (${inactive30Days.length} คน)`, 
+                    value: formatList(inactive30Days), 
+                    inline: false 
+                }
             )
-            .setFooter({ text: `เช็กโดย ${message.author.tag}` })
+            .setFooter({ text: `คำสั่งโดย: ${message.author.tag}` })
             .setTimestamp();
 
-        await waitMsg.edit({ content: '✅ ตรวจสอบข้อมูลสำเร็จ!', embeds: [embed] });
+        // 3. ค้นหาห้องปฏิบัติการเพื่อส่งผลลัพธ์
+        const logChannel = LOG_CHANNEL_ID ? guild.channels.cache.get(LOG_CHANNEL_ID) : null;
+
+        if (logChannel) {
+            await logChannel.send({ embeds: [embed] });
+            await waitMsg.edit(`✅ ส่งรายชื่อและผลการตรวจสอบไปที่ห้องปฏิบัติการ <#${LOG_CHANNEL_ID}> เรียบร้อยแล้ว!`);
+        } else {
+            // กรณีไม่มี LOG_CHANNEL_ID ให้ส่งที่ห้องเดิม
+            await waitMsg.edit({ content: '⚠️ ไม่พบการตั้งค่า `LOG_CHANNEL_ID` ผลลัพธ์จึงแสดงในห้องนี้:', embeds: [embed] });
+        }
 
     } catch (error) {
         console.error('Error in !status command:', error);
-        await waitMsg.edit('❌ เกิดข้อผิดพลาดขณะดึงข้อมูลสมาชิก');
+        await waitMsg.edit('❌ เกิดข้อผิดพลาดขณะประมวลผลข้อมูล');
     }
 });
-
 client.login(TOKEN);
