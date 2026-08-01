@@ -51,7 +51,7 @@ const commands = [
 
     new SlashCommandBuilder()
         .setName('setup_dropdown')
-        .setDescription('เพิ่ม Dropdown เลือกยศใส่ข้อความเดิม (รองรับ Dishook และข้อความทุกชนิด)')
+        .setDescription('เพิ่ม Dropdown เลือกยศใส่ข้อความเดิม (รองรับ Dishook และใส่รูปภาพเพิ่มได้)')
         .setDefaultMemberPermissions(PermissionFlagsBits.Administrator)
         .addStringOption(option =>
             option.setName('message_id')
@@ -61,6 +61,10 @@ const commands = [
             option.setName('placeholder')
                 .setDescription('ข้อความตัวอย่างบน Dropdown (เช่น: 🎮 เลือกยศเกมของคุณที่นี่...)')
                 .setRequired(true))
+        .addStringOption(option =>
+            option.setName('image_url')
+                .setDescription('ลิงก์รูปภาพ / Banner เพิ่มเติม (เว้นว่างได้ถ้าไม่ต้องการใส่)')
+                .setRequired(false))
         .addRoleOption(option => option.setName('role1').setDescription('ยศที่ 1').setRequired(true))
         .addRoleOption(option => option.setName('role2').setDescription('ยศที่ 2').setRequired(false))
         .addRoleOption(option => option.setName('role3').setDescription('ยศที่ 3').setRequired(false))
@@ -146,6 +150,7 @@ client.on('interactionCreate', async (interaction) => {
 
                 const messageId = interaction.options.getString('message_id').trim();
                 const placeholder = interaction.options.getString('placeholder');
+                const imageUrl = interaction.options.getString('image_url'); // 🖼️ ดึงลิงก์รูปภาพที่แนบมา
 
                 const roles = [];
                 for (let i = 1; i <= 10; i++) {
@@ -195,16 +200,30 @@ client.on('interactionCreate', async (interaction) => {
 
                     const row = new ActionRowBuilder().addComponents(selectMenu);
 
-                    // 🔄 3. ตรวจสอบผู้สร้างข้อความ
+                    // 🖼️ 3. จัดการรูปภาพ (ถ้ามีการส่งลิงก์รูปภาพเข้ามา)
+                    let embedsToUse = [...(targetMessage.embeds || [])];
+                    if (imageUrl && imageUrl.startsWith('http')) {
+                        if (embedsToUse.length > 0) {
+                            // ถ้ามี Embed เดิมอยู่แล้ว ให้ตั้งค่ารูปภาพลงใน Embed ตัวแรก
+                            const newEmbed = EmbedBuilder.from(embedsToUse[0]).setImage(imageUrl);
+                            embedsToUse[0] = newEmbed;
+                        } else {
+                            // ถ้าไม่มี Embed เดิม ให้สร้าง Embed รูปใหม่ขึ้นมา
+                            const newEmbed = new EmbedBuilder().setImage(imageUrl);
+                            embedsToUse.push(newEmbed);
+                        }
+                    }
+
+                    // 🔄 4. ตรวจสอบผู้สร้างข้อความ
                     if (targetMessage.author.id === client.user.id) {
                         // ข้อความบอทตัวเอง ให้แก้ไขตรงๆ
-                        await targetMessage.edit({ components: [row] });
-                        return await interaction.editReply({ content: `✅ แก้ไขข้อความของบอทและเพิ่ม Dropdown เรียบร้อย!` });
+                        await targetMessage.edit({ embeds: embedsToUse, components: [row] });
+                        return await interaction.editReply({ content: `✅ แก้ไขข้อความและอัปเดตรูปภาพเรียบร้อย!` });
                     } else {
-                        // ข้อความ Dishook / คนอื่น / บอทตัวอื่น -> ดึงเนื้อหาเดิมมาส่งใหม่พร้อม Dropdown
+                        // ข้อความ Dishook / คนอื่น / บอทตัวอื่น -> ดึงเนื้อหาเดิมมาส่งใหม่พร้อม Dropdown & รูปภาพ
                         const payload = {
                             content: targetMessage.content || null,
-                            embeds: targetMessage.embeds || [],
+                            embeds: embedsToUse,
                             files: Array.from(targetMessage.attachments.values()),
                             components: [row]
                         };
@@ -212,7 +231,7 @@ client.on('interactionCreate', async (interaction) => {
                         await targetMessage.channel.send(payload);
 
                         return await interaction.editReply({ 
-                            content: `✅ เนื่องจากข้อความนี้มาจาก **${targetMessage.author.username}** (API ไม่อนุญาตให้แก้ตรงๆ)\nบอทได้ทำการสร้างข้อความใหม่พร้อมแนบ Dropdown ในห้อง <#${targetMessage.channel.id}> ให้แล้วครับ! (ลบข้อความเก่าทิ้งได้เลย)` 
+                            content: `✅ บอทได้ทำการสร้างข้อความใหม่พร้อมแนบ Dropdown และรูปภาพในห้อง <#${targetMessage.channel.id}> ให้แล้วครับ! (ลบข้อความเก่าทิ้งได้เลย)` 
                         });
                     }
 
