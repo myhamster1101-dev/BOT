@@ -32,10 +32,8 @@ const REPORT_LOG_CHANNEL_ID = process.env.REPORT_LOG_CHANNEL_ID;
 const BAN_LOG_CHANNEL_ID = process.env.BAN_LOG_CHANNEL_ID;
 const BANNED_ROLE_ID = process.env.BANNED_ROLE_ID;
 
-// ⚙️ [ตั้งค่าระบบรับยศด้วยการพิมพ์จุด]
-// ใส่ ID ห้องรับยศ และ ID ยศที่ต้องการแจก ตรงนี้ได้เลยครับ!
-const AUTO_ROLE_CHANNEL_ID = '1453735073139523790'; 
-const AUTO_GIVE_ROLE_ID = '1473339520492769351'; 
+// 🟢 ตัวแปรเก็บการตั้งค่าระบบพิมพ์จุด (เก็บลงหน่วยความจำของบอท)
+client.dotRoleConfigs = client.dotRoleConfigs || new Map();
 
 // 1. Slash Commands Definition
 const commands = [
@@ -53,6 +51,19 @@ const commands = [
         .setName('setup-admin')
         .setDescription('ตั้งค่าและสร้างปุ่มจัดการผู้ใช้ (สำหรับแอดมิน)')
         .setDefaultMemberPermissions(PermissionFlagsBits.ModerateMembers),
+
+    new SlashCommandBuilder()
+        .setName('setup-dot-role')
+        .setDescription('ตั้งค่าห้องและยศสำหรับระบบพิมพ์จุด (.) รับยศ')
+        .setDefaultMemberPermissions(PermissionFlagsBits.Administrator)
+        .addChannelOption(option =>
+            option.setName('channel')
+                .setDescription('เลือกห้องที่ต้องการให้พิมพ์จุด')
+                .setRequired(true))
+        .addRoleOption(option =>
+            option.setName('role')
+                .setDescription('เลือกยศที่จะให้เมื่อพิมพ์จุด')
+                .setRequired(true)),
 
     new SlashCommandBuilder()
         .setName('setup_dropdown')
@@ -94,48 +105,6 @@ client.on('ready', async () => {
     }
 });
 
-// --------------------------------------------------
-// 🔴 ระบบพิมพ์จุด (.) เพื่อรับยศอัตโนมัติ
-// --------------------------------------------------
-client.on('messageCreate', async (message) => {
-    if (message.author.bot || !message.guild) return;
-
-    // ตรวจสอบว่าพิมพ์ในห้องรับยศที่กำหนดไว้หรือไม่
-    if (message.channel.id === AUTO_ROLE_CHANNEL_ID) {
-        
-        // ถ้าพิมพ์จุด . (หรือพิมพ์ข้อความอะไรก็ตามในห้องนี้)
-        if (message.content.trim() === '.' || message.content.length > 0) {
-            
-            // ลบข้อความที่สมาชิกพิมพ์ทันทีเพื่อความสะอาดของห้อง
-            await message.delete().catch(() => null);
-
-            try {
-                const role = message.guild.roles.cache.get(AUTO_GIVE_ROLE_ID);
-                if (!role) {
-                    console.log('❌ ไม่พบ ID ยศที่ตั้งค่าไว้');
-                    return;
-                }
-
-                // เช็กว่ามียศอยู่แล้วหรือไม่
-                if (message.member.roles.cache.has(AUTO_GIVE_ROLE_ID)) {
-                    return message.channel.send(`⚠️ <@${message.author.id}> คุณมียศ **${role.name}** อยู่แล้วครับ!`)
-                        .then(msg => setTimeout(() => msg.delete().catch(() => null), 4000));
-                }
-
-                // ให้ยศสมาชิก
-                await message.member.roles.add(role);
-
-                // ส่งข้อความแจ้งเตือน แล้วลบออกใน 5 วินาที
-                return message.channel.send(`🎉 ยินดีต้อนรับ <@${message.author.id}> ! บอทได้มอบยศ **${role.name}** ให้เรียบร้อยแล้วครับ ✅`)
-                    .then(msg => setTimeout(() => msg.delete().catch(() => null), 5000));
-
-            } catch (error) {
-                console.error('❌ เกิดข้อผิดพลาดในการให้ยศ:', error);
-            }
-        }
-    }
-});
-
 // Helper สร้าง Modal สำหรับ Setup
 function createSetupModal(customId, title, defaultTitle, defaultDesc, defaultBtn) {
     const modal = new ModalBuilder().setCustomId(customId).setTitle(title);
@@ -159,6 +128,22 @@ client.on('interactionCreate', async (interaction) => {
     try {
         // --- A. COMMAND HANDLERS ---
         if (interaction.isChatInputCommand()) {
+            if (interaction.commandName === 'setup-dot-role') {
+                const targetChannel = interaction.options.getChannel('channel');
+                const targetRole = interaction.options.getRole('role');
+
+                // บันทึกการตั้งค่าลง Map
+                client.dotRoleConfigs.set(targetChannel.id, targetRole.id);
+
+                const embed = new EmbedBuilder()
+                    .setTitle('⚙️ ตั้งค่าระบบพิมพ์จุดรับยศสำเร็จ!')
+                    .setColor(0x2ECC71)
+                    .setDescription(`เมื่อมีสมาชิกพิมพ์จุด \`.\` ในห้อง <#${targetChannel.id}> บอทจะมอบยศ **${targetRole.name}** ให้ทันทีครับ!`)
+                    .setTimestamp();
+
+                return await interaction.reply({ embeds: [embed], ephemeral: true });
+            }
+
             if (interaction.commandName === 'setup-ticket') {
                 const modal = createSetupModal(
                     'modal_config_ticket', 
@@ -519,94 +504,120 @@ client.on('interactionCreate', async (interaction) => {
 });
 
 // --------------------------------------------------
-// ระบบเช็กสมาชิก !status
+// 🔴 ระบบตรวจสอบข้อความ พิมพ์จุด (.) เพื่อรับยศ
 // --------------------------------------------------
 client.on('messageCreate', async (message) => {
-    if (message.author.bot || !message.content.startsWith('!status')) return;
+    if (message.author.bot || !message.guild) return;
 
-    const COMMAND_CHANNEL_ID = process.env.COMMAND_CHANNEL_ID;
-    const LOG_CHANNEL_ID = process.env.LOG_CHANNEL_ID;
+    // เช็กว่าห้องนี้ถูกตั้งค่าระบบพิมพ์จุดไว้หรือไม่
+    const roleId = client.dotRoleConfigs.get(message.channel.id);
+    if (roleId) {
+        
+        // ถ้าสมาชิกพิมพ์ . (หรือพิมพ์ข้อความอะไรก็ตามในห้องนี้)
+        if (message.content.trim() === '.' || message.content.length > 0) {
+            
+            // ลบข้อความสมาชิกทันที
+            await message.delete().catch(() => null);
 
-    if (COMMAND_CHANNEL_ID && message.channel.id !== COMMAND_CHANNEL_ID) {
-        return message.reply(`⚠️ คำสั่งนี้ใช้ได้เฉพาะในห้องสั่งการ <#${COMMAND_CHANNEL_ID}> เท่านั้นครับ!`)
-            .then(msg => setTimeout(() => msg.delete().catch(() => null), 5000));
-    }
+            try {
+                const role = message.guild.roles.cache.get(roleId);
+                if (!role) return;
 
-    if (!message.member.permissions.has(PermissionFlagsBits.ModerateMembers)) {
-        return message.reply('❌ คุณไม่มีสิทธิ์ใช้คำสั่งนี้');
-    }
-
-    const waitMsg = await message.reply('🔄 กำลังประมวลผลและรวบรวมรายชื่อสมาชิกที่ไม่เคลื่อนไหว...');
-
-    try {
-        const guild = message.guild;
-        await guild.members.fetch();
-
-        const now = Date.now();
-        const members = guild.members.cache.filter(m => !m.user.bot);
-
-        const inactive30Days = [];
-        const inactive90Days = [];
-        const noRoleList = [];
-
-        members.forEach(member => {
-            if (member.roles.cache.size <= 1) {
-                noRoleList.push(`<@${member.id}>`);
-            }
-
-            if (!member.joinedTimestamp) return;
-            const daysInServer = Math.floor((now - member.joinedTimestamp) / (1000 * 60 * 60 * 24));
-
-            if (daysInServer >= 90) {
-                inactive90Days.push(`<@${member.id}> (${daysInServer} วัน)`);
-            } else if (daysInServer >= 30) {
-                inactive30Days.push(`<@${member.id}> (${daysInServer} วัน)`);
-            }
-        });
-
-        const formatList = (arr) => {
-            if (arr.length === 0) return 'ไม่มี';
-            const text = arr.join('\n');
-            return text.length > 1024 ? text.substring(0, 1000) + '\n...และอื่นๆ อีกหลายคน' : text;
-        };
-
-        const embed = new EmbedBuilder()
-            .setTitle(`🚨 [รายชื่อสมาชิกสำหรับคัดออก] - ${guild.name}`)
-            .setColor(0xE74C3C)
-            .setThumbnail(guild.iconURL({ dynamic: true }))
-            .setDescription(`📊 **สมาชิกคนจริงทั้งหมด:** \`${members.size}\` คน`)
-            .addFields(
-                { 
-                    name: `❓ ไม่มี Role ใดๆ (${noRoleList.length} คน)`, 
-                    value: formatList(noRoleList), 
-                    inline: false 
-                },
-                { 
-                    name: `🗓️ อยู่มาเกิน 3 เดือน / 90+ วัน (${inactive90Days.length} คน)`, 
-                    value: formatList(inactive90Days), 
-                    inline: false 
-                },
-                { 
-                    name: `📅 อยู่มาเกิน 1 เดือน / 30+ วัน (${inactive30Days.length} คน)`, 
-                    value: formatList(inactive30Days), 
-                    inline: false 
+                // เช็กว่ามียศอยู่แล้วหรือไม่
+                if (message.member.roles.cache.has(roleId)) {
+                    return message.channel.send(`⚠️ <@${message.author.id}> คุณมียศ **${role.name}** อยู่แล้วครับ!`)
+                        .then(msg => setTimeout(() => msg.delete().catch(() => null), 4000));
                 }
-            )
-            .setFooter({ text: `คำสั่งโดย: ${message.author.tag}` })
-            .setTimestamp();
 
-        const logChannel = LOG_CHANNEL_ID ? guild.channels.cache.get(LOG_CHANNEL_ID) : null;
+                // มอบยศให้สมาชิก
+                await message.member.roles.add(role);
 
-        if (logChannel) {
-            await logChannel.send({ embeds: [embed] });
-            await waitMsg.edit(`✅ ส่งรายชื่อและผลการตรวจสอบไปที่ห้องปฏิบัติการ <#${LOG_CHANNEL_ID}> เรียบร้อยแล้ว!`);
-        } else {
-            await waitMsg.edit({ content: '⚠️ ไม่พบการตั้งค่า `LOG_CHANNEL_ID` ผลลัพธ์จึงแสดงในห้องนี้:', embeds: [embed] });
+                // ส่งข้อความต้อนรับและลบทิ้งใน 5 วินาที
+                return message.channel.send(`🎉 ยินดีต้อนรับ <@${message.author.id}> ! บอทได้มอบยศ **${role.name}** ให้เรียบร้อยแล้วครับ ✅`)
+                    .then(msg => setTimeout(() => msg.delete().catch(() => null), 5000));
+
+            } catch (error) {
+                console.error('❌ เกิดข้อผิดพลาดในการมอบยศ:', error);
+            }
+        }
+    }
+
+    // --------------------------------------------------
+    // ระบบเช็กสมาชิก !status
+    // --------------------------------------------------
+    if (message.content.startsWith('!status')) {
+        const COMMAND_CHANNEL_ID = process.env.COMMAND_CHANNEL_ID;
+        const LOG_CHANNEL_ID = process.env.LOG_CHANNEL_ID;
+
+        if (COMMAND_CHANNEL_ID && message.channel.id !== COMMAND_CHANNEL_ID) {
+            return message.reply(`⚠️ คำสั่งนี้ใช้ได้เฉพาะในห้องสั่งการ <#${COMMAND_CHANNEL_ID}> เท่านั้นครับ!`)
+                .then(msg => setTimeout(() => msg.delete().catch(() => null), 5000));
         }
 
-    } catch (error) {
-        console.error('Error in !status command:', error);
-        await waitMsg.edit('❌ เกิดข้อผิดพลาดขณะประมวลผลข้อมูล');
+        if (!message.member.permissions.has(PermissionFlagsBits.ModerateMembers)) {
+            return message.reply('❌ คุณไม่มีสิทธิ์ใช้คำสั่งนี้');
+        }
+
+        const waitMsg = await message.reply('🔄 กำลังประมวลผลและรวบรวมรายชื่อสมาชิกที่ไม่เคลื่อนไหว...');
+
+        try {
+            const guild = message.guild;
+            await guild.members.fetch();
+
+            const now = Date.now();
+            const members = guild.members.cache.filter(m => !m.user.bot);
+
+            const inactive30Days = [];
+            const inactive90Days = [];
+            const noRoleList = [];
+
+            members.forEach(member => {
+                if (member.roles.cache.size <= 1) {
+                    noRoleList.push(`<@${member.id}>`);
+                }
+
+                if (!member.joinedTimestamp) return;
+                const daysInServer = Math.floor((now - member.joinedTimestamp) / (1000 * 60 * 60 * 24));
+
+                if (daysInServer >= 90) {
+                    inactive90Days.push(`<@${member.id}> (${daysInServer} วัน)`);
+                } else if (daysInServer >= 30) {
+                    inactive30Days.push(`<@${member.id}> (${daysInServer} วัน)`);
+                }
+            });
+
+            const formatList = (arr) => {
+                if (arr.length === 0) return 'ไม่มี';
+                const text = arr.join('\n');
+                return text.length > 1024 ? text.substring(0, 1000) + '\n...และอื่นๆ อีกหลายคน' : text;
+            };
+
+            const embed = new EmbedBuilder()
+                .setTitle(`🚨 [รายชื่อสมาชิกสำหรับคัดออก] - ${guild.name}`)
+                .setColor(0xE74C3C)
+                .setThumbnail(guild.iconURL({ dynamic: true }))
+                .setDescription(`📊 **สมาชิกคนจริงทั้งหมด:** \`${members.size}\` คน`)
+                .addFields(
+                    { name: `❓ ไม่มี Role ใดๆ (${noRoleList.length} คน)`, value: formatList(noRoleList), inline: false },
+                    { name: `🗓️ อยู่มาเกิน 3 เดือน / 90+ วัน (${inactive90Days.length} คน)`, value: formatList(inactive90Days), inline: false },
+                    { name: `📅 อยู่มาเกิน 1 เดือน / 30+ วัน (${inactive30Days.length} คน)`, value: formatList(inactive30Days), inline: false }
+                )
+                .setFooter({ text: `คำสั่งโดย: ${message.author.tag}` })
+                .setTimestamp();
+
+            const logChannel = LOG_CHANNEL_ID ? guild.channels.cache.get(LOG_CHANNEL_ID) : null;
+
+            if (logChannel) {
+                await logChannel.send({ embeds: [embed] });
+                await waitMsg.edit(`✅ ส่งรายชื่อและผลการตรวจสอบไปที่ห้องปฏิบัติการ <#${LOG_CHANNEL_ID}> เรียบร้อยแล้ว!`);
+            } else {
+                await waitMsg.edit({ content: '⚠️ ไม่พบการตั้งค่า `LOG_CHANNEL_ID` ผลลัพธ์จึงแสดงในห้องนี้:', embeds: [embed] });
+            }
+
+        } catch (error) {
+            console.error('Error in !status command:', error);
+            await waitMsg.edit('❌ เกิดข้อผิดพลาดขณะประมวลผลข้อมูล');
+        }
     }
 });
 
