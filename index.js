@@ -147,7 +147,6 @@ client.on('interactionCreate', async (interaction) => {
             const messageId = interaction.options.getString('message_id');
             const placeholder = interaction.options.getString('placeholder');
 
-            // ดึงยศทั้งหมดที่ผู้ใช้เลือกในออปชันคำสั่ง
             const roles = [];
             for (let i = 1; i <= 10; i++) {
                 const role = interaction.options.getRole(`role${i}`);
@@ -155,10 +154,8 @@ client.on('interactionCreate', async (interaction) => {
             }
 
             try {
-                // ดึงข้อความเดิมจากช่องปัจจุบัน
                 const targetMessage = await interaction.channel.messages.fetch(messageId);
 
-                // สร้างตัวเลือก Dropdown จากยศที่แท็กในคำสั่งอัตโนมัติ
                 const selectMenu = new StringSelectMenuBuilder()
                     .setCustomId('select_dynamic_roles')
                     .setPlaceholder(placeholder)
@@ -175,11 +172,11 @@ client.on('interactionCreate', async (interaction) => {
                 const row = new ActionRowBuilder().addComponents(selectMenu);
 
                 await targetMessage.edit({ components: [row] });
-                return await interaction.editReply({ content: `✅ เพิ่ม Dropdown รวม ${roles.length} ยศ ใส่ข้อความเป้าหมายเรียบร้อยแล้ว!` });
+                return await interaction.editReply({ content: `✅ เพิ่ม Dropdown รวม ${roles.length} ยศ เรียบร้อยแล้ว!` });
 
             } catch (err) {
                 console.error(err);
-                return await interaction.editReply({ content: '❌ หาข้อความไม่พบ! กรุณาเช็กว่าคุณพิมพ์คำสั่งใน **ห้องเดียวกับข้อความนั้น** หรือไม่' });
+                return await interaction.editReply({ content: '❌ หาข้อความไม่พบ! (ต้องใช้คำสั่งในห้องเดียวกับข้อความนั้น)' });
             }
         }
 
