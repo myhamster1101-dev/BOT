@@ -34,8 +34,8 @@ const BANNED_ROLE_ID = process.env.BANNED_ROLE_ID;
 
 // ⚙️ [ตั้งค่าระบบรับยศด้วยการพิมพ์จุด]
 // ใส่ ID ห้องรับยศ และ ID ยศที่ต้องการแจก ตรงนี้ได้เลยครับ!
-const AUTO_ROLE_CHANNEL_ID = 'ใส่_ID_ห้องรับยศตรงนี้'; 
-const AUTO_GIVE_ROLE_ID = 'ใส่_ID_ยศที่ต้องการแจกตรงนี้'; 
+const AUTO_ROLE_CHANNEL_ID = '1453735073139523790'; 
+const AUTO_GIVE_ROLE_ID = '1473339520492769351'; 
 
 // 1. Slash Commands Definition
 const commands = [
