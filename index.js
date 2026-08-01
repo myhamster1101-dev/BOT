@@ -386,8 +386,7 @@ client.on('interactionCreate', async (interaction) => {
                     return await interaction.showModal(modal);
                 }
             }
-        }
-    } catch (err) {
+        }catch (err) {
         console.error('Interaction Exception:', err);
     }
 });
