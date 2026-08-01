@@ -31,8 +31,6 @@ const BLACKLIST_CHANNEL_ID = process.env.BLACKLIST_CHANNEL_ID;
 const REPORT_LOG_CHANNEL_ID = process.env.REPORT_LOG_CHANNEL_ID;
 const BAN_LOG_CHANNEL_ID = process.env.BAN_LOG_CHANNEL_ID;
 const BANNED_ROLE_ID = process.env.BANNED_ROLE_ID;
-const COMMAND_CHANNEL_ID = process.env.COMMAND_CHANNEL_ID;
-const LOG_CHANNEL_ID = process.env.LOG_CHANNEL_ID;
 
 // 1. Slash Commands Definition
 const commands = [
@@ -53,7 +51,7 @@ const commands = [
 
     new SlashCommandBuilder()
         .setName('setup_dropdown')
-        .setDescription('เพิ่ม Dropdown เลือกยศใส่ข้อความเดิม (กำหนดข้อความและยศเองได้เลย)')
+        .setDescription('เพิ่ม Dropdown เลือกยศใส่ข้อความเดิม (รองรับ Dishook และข้อความทุกชนิด)')
         .setDefaultMemberPermissions(PermissionFlagsBits.Administrator)
         .addStringOption(option =>
             option.setName('message_id')
@@ -87,7 +85,7 @@ client.on('ready', async () => {
     }
 });
 
-// Helper สร้าง Modal แบบรวดเร็ว
+// Helper สร้าง Modal สำหรับ Setup
 function createSetupModal(customId, title, defaultTitle, defaultDesc, defaultBtn) {
     const modal = new ModalBuilder().setCustomId(customId).setTitle(title);
     
@@ -146,7 +144,7 @@ client.on('interactionCreate', async (interaction) => {
             if (interaction.commandName === 'setup_dropdown') {
                 await interaction.deferReply({ ephemeral: true });
 
-                const messageId = interaction.options.getString('message_id');
+                const messageId = interaction.options.getString('message_id').trim();
                 const placeholder = interaction.options.getString('placeholder');
 
                 const roles = [];
@@ -156,8 +154,32 @@ client.on('interactionCreate', async (interaction) => {
                 }
 
                 try {
-                    const targetMessage = await interaction.channel.messages.fetch(messageId);
+                    // 🔍 1. ค้นหาข้อความจากทุกห้องในเซิร์ฟเวอร์
+                    let targetMessage = null;
+                    targetMessage = await interaction.channel.messages.fetch(messageId).catch(() => null);
 
+                    if (!targetMessage) {
+                        const channels = await interaction.guild.channels.fetch();
+                        const textChannels = channels.filter(c => c && c.isTextBased() && c.viewable);
+
+                        for (const [_, ch] of textChannels) {
+                            try {
+                                const msg = await ch.messages.fetch(messageId).catch(() => null);
+                                if (msg) {
+                                    targetMessage = msg;
+                                    break;
+                                }
+                            } catch (e) {
+                                continue;
+                            }
+                        }
+                    }
+
+                    if (!targetMessage) {
+                        return await interaction.editReply({ content: '❌ หาข้อความไม่พบ! กรุณาตรวจสอบ ID ข้อความอีกครั้ง' });
+                    }
+
+                    // 🎛️ 2. สร้าง Dropdown เลือกยศ
                     const selectMenu = new StringSelectMenuBuilder()
                         .setCustomId('select_dynamic_roles')
                         .setPlaceholder(placeholder)
@@ -173,12 +195,30 @@ client.on('interactionCreate', async (interaction) => {
 
                     const row = new ActionRowBuilder().addComponents(selectMenu);
 
-                    await targetMessage.edit({ components: [row] });
-                    return await interaction.editReply({ content: `✅ เพิ่ม Dropdown รวม ${roles.length} ยศ เรียบร้อยแล้ว!` });
+                    // 🔄 3. ตรวจสอบผู้สร้างข้อความ
+                    if (targetMessage.author.id === client.user.id) {
+                        // ข้อความบอทตัวเอง ให้แก้ไขตรงๆ
+                        await targetMessage.edit({ components: [row] });
+                        return await interaction.editReply({ content: `✅ แก้ไขข้อความของบอทและเพิ่ม Dropdown เรียบร้อย!` });
+                    } else {
+                        // ข้อความ Dishook / คนอื่น / บอทตัวอื่น -> ดึงเนื้อหาเดิมมาส่งใหม่พร้อม Dropdown
+                        const payload = {
+                            content: targetMessage.content || null,
+                            embeds: targetMessage.embeds || [],
+                            files: Array.from(targetMessage.attachments.values()),
+                            components: [row]
+                        };
+
+                        await targetMessage.channel.send(payload);
+
+                        return await interaction.editReply({ 
+                            content: `✅ เนื่องจากข้อความนี้มาจาก **${targetMessage.author.username}** (API ไม่อนุญาตให้แก้ตรงๆ)\nบอทได้ทำการสร้างข้อความใหม่พร้อมแนบ Dropdown ในห้อง <#${targetMessage.channel.id}> ให้แล้วครับ! (ลบข้อความเก่าทิ้งได้เลย)` 
+                        });
+                    }
 
                 } catch (err) {
                     console.error(err);
-                    return await interaction.editReply({ content: '❌ หาข้อความไม่พบ! (ต้องใช้คำสั่งในห้องเดียวกับข้อความนั้น)' });
+                    return await interaction.editReply({ content: '❌ เกิดข้อผิดพลาดในการประมวลผลข้อความ' });
                 }
             }
         }
@@ -390,13 +430,12 @@ client.on('interactionCreate', async (interaction) => {
                 }
             }
 
-            // ตัวรับค่าแจกยศอัตโนมัติจาก Dropdown
+            // ตัวรับค่าเลือกยศอัตโนมัติจาก Dropdown
             if (interaction.customId === 'select_dynamic_roles') {
                 await interaction.deferReply({ ephemeral: true });
 
                 const selectedRoleIds = interaction.values;
                 const member = interaction.member;
-
                 const allMenuRoleIds = interaction.component.options.map(opt => opt.value);
 
                 try {
