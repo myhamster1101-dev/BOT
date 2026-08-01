@@ -32,7 +32,7 @@ const REPORT_LOG_CHANNEL_ID = process.env.REPORT_LOG_CHANNEL_ID;
 const BAN_LOG_CHANNEL_ID = process.env.BAN_LOG_CHANNEL_ID;
 const BANNED_ROLE_ID = process.env.BANNED_ROLE_ID;
 
-// 1. Slash Commands Definition
+// 1. Slash Commands Definition (บังคับขึ้นช่อง image_url ทันที!)
 const commands = [
     new SlashCommandBuilder()
         .setName('setup-ticket')
@@ -51,7 +51,7 @@ const commands = [
 
     new SlashCommandBuilder()
         .setName('setup_dropdown')
-        .setDescription('เพิ่ม Dropdown เลือกยศใส่ข้อความเดิม (รองรับ Dishook และใส่รูปภาพเพิ่มได้)')
+        .setDescription('เพิ่ม Dropdown เลือกยศใส่ข้อความเดิม (ใส่รูปได้)')
         .setDefaultMemberPermissions(PermissionFlagsBits.Administrator)
         .addStringOption(option =>
             option.setName('message_id')
@@ -59,12 +59,12 @@ const commands = [
                 .setRequired(true))
         .addStringOption(option =>
             option.setName('placeholder')
-                .setDescription('ข้อความตัวอย่างบน Dropdown (เช่น: 🎮 เลือกยศเกมของคุณที่นี่...)')
+                .setDescription('ข้อความตัวอย่างบน Dropdown (เช่น: 🎮 เลือกยศ...)')
                 .setRequired(true))
         .addStringOption(option =>
             option.setName('image_url')
-                .setDescription('ลิงก์รูปภาพ / Banner เพิ่มเติม (เว้นว่างได้ถ้าไม่ต้องการใส่)')
-                .setRequired(false))
+                .setDescription('ลิงก์รูปภาพ Banner (ถ้าไม่ใส่พิมพ์ - หรือเว้นว่างได้)')
+                .setRequired(true)) // 🔥 ตั้งเป็น true เพื่อให้โผล่ขึ้นมาให้กรอกเลยทันที ไม่ต้องกดหา
         .addRoleOption(option => option.setName('role1').setDescription('ยศที่ 1').setRequired(true))
         .addRoleOption(option => option.setName('role2').setDescription('ยศที่ 2').setRequired(false))
         .addRoleOption(option => option.setName('role3').setDescription('ยศที่ 3').setRequired(false))
@@ -150,7 +150,7 @@ client.on('interactionCreate', async (interaction) => {
 
                 const messageId = interaction.options.getString('message_id').trim();
                 const placeholder = interaction.options.getString('placeholder');
-                const imageUrl = interaction.options.getString('image_url'); // 🖼️ ดึงลิงก์รูปภาพที่แนบมา
+                const imageUrl = interaction.options.getString('image_url').trim();
 
                 const roles = [];
                 for (let i = 1; i <= 10; i++) {
@@ -200,15 +200,13 @@ client.on('interactionCreate', async (interaction) => {
 
                     const row = new ActionRowBuilder().addComponents(selectMenu);
 
-                    // 🖼️ 3. จัดการรูปภาพ (ถ้ามีการส่งลิงก์รูปภาพเข้ามา)
+                    // 🖼️ 3. จัดการรูปภาพ
                     let embedsToUse = [...(targetMessage.embeds || [])];
                     if (imageUrl && imageUrl.startsWith('http')) {
                         if (embedsToUse.length > 0) {
-                            // ถ้ามี Embed เดิมอยู่แล้ว ให้ตั้งค่ารูปภาพลงใน Embed ตัวแรก
                             const newEmbed = EmbedBuilder.from(embedsToUse[0]).setImage(imageUrl);
                             embedsToUse[0] = newEmbed;
                         } else {
-                            // ถ้าไม่มี Embed เดิม ให้สร้าง Embed รูปใหม่ขึ้นมา
                             const newEmbed = new EmbedBuilder().setImage(imageUrl);
                             embedsToUse.push(newEmbed);
                         }
@@ -216,11 +214,9 @@ client.on('interactionCreate', async (interaction) => {
 
                     // 🔄 4. ตรวจสอบผู้สร้างข้อความ
                     if (targetMessage.author.id === client.user.id) {
-                        // ข้อความบอทตัวเอง ให้แก้ไขตรงๆ
                         await targetMessage.edit({ embeds: embedsToUse, components: [row] });
                         return await interaction.editReply({ content: `✅ แก้ไขข้อความและอัปเดตรูปภาพเรียบร้อย!` });
                     } else {
-                        // ข้อความ Dishook / คนอื่น / บอทตัวอื่น -> ดึงเนื้อหาเดิมมาส่งใหม่พร้อม Dropdown & รูปภาพ
                         const payload = {
                             content: targetMessage.content || null,
                             embeds: embedsToUse,
@@ -282,7 +278,6 @@ client.on('interactionCreate', async (interaction) => {
 
         // --- C. MODAL SUBMIT HANDLERS ---
         if (interaction.isModalSubmit()) {
-            // C1. Config Submits
             if (interaction.customId.startsWith('modal_config_')) {
                 const title = interaction.fields.getTextInputValue('cfg_title');
                 const desc = interaction.fields.getTextInputValue('cfg_desc');
@@ -315,7 +310,6 @@ client.on('interactionCreate', async (interaction) => {
                 return await interaction.reply({ content: '✅ สร้างระบบพร้อมใช้งานเรียบร้อยแล้ว!', ephemeral: true });
             }
 
-            // C2. Form Submits
             if (interaction.customId === 'modal_cmd_ticket_submit') {
                 const detailVal = interaction.fields.getTextInputValue('input_detail');
                 const reportChannel = interaction.guild.channels.cache.get(REPORT_LOG_CHANNEL_ID);
@@ -449,7 +443,6 @@ client.on('interactionCreate', async (interaction) => {
                 }
             }
 
-            // ตัวรับค่าเลือกยศอัตโนมัติจาก Dropdown
             if (interaction.customId === 'select_dynamic_roles') {
                 await interaction.deferReply({ ephemeral: true });
 
