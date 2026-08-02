@@ -197,6 +197,8 @@ client.on('interactionCreate', async (interaction) => {
         if (interaction.isChatInputCommand()) {
 
             if (interaction.commandName === 'setup-dot-role') {
+                await interaction.deferReply({ ephemeral: true });
+
                 const targetChannel = interaction.options.getChannel('channel');
                 const targetRole = interaction.options.getRole('role');
                 const bannerUrl = interaction.options.getString('banner_url') || null;
@@ -214,11 +216,13 @@ client.on('interactionCreate', async (interaction) => {
                     .setDescription(`ตั้งค่าการรับยศ **${targetRole.name}** ในห้อง <#${targetChannel.id}> เรียบร้อยครับ!`)
                     .setTimestamp();
 
-                return await interaction.reply({ embeds: [embed], ephemeral: true });
+                return await interaction.editReply({ embeds: [embed] });
             }
 
-            // 🚀 --- ตั้งค่าระบบขอบคุณคน Boost (ตอบสนองทันที Fast Response) ---
+            // 🚀 --- ตั้งค่าระบบขอบคุณคน Boost ---
             if (interaction.commandName === 'setup-boost') {
+                await interaction.deferReply({ ephemeral: true });
+
                 const targetChannel = interaction.options.getChannel('channel');
                 const title = interaction.options.getString('title') || '🚀 ขอบคุณสำหรับการ Server Boost!';
                 const description = interaction.options.getString('description') || '💖 ขอบคุณคุณ {user} มากๆ นะครับที่ช่วยสนับสนุนเซิร์ฟเวอร์ **{guild}**!\n\nแวะไปพูดคุยกับเพื่อนๆ ได้ที่ห้อง {#พูดคุย-ทั่วไป} หรือดูสิทธิ์พิเศษที่ยศ {@Booster} ได้เลย!';
@@ -241,11 +245,13 @@ client.on('interactionCreate', async (interaction) => {
                     .setDescription(`ตั้งค่าการแจ้งเตือนไว้ที่ห้อง <#${targetChannel.id}> เรียบร้อยครับ!\n\n💡 **คุณสามารถพิมพ์ `/test-boost` เพื่อทดสอบระบบได้ทันที!**`)
                     .setTimestamp();
 
-                return await interaction.reply({ embeds: [previewEmbed], ephemeral: true });
+                return await interaction.editReply({ embeds: [previewEmbed] });
             }
 
-            // 🧪 --- ระบบทดสอบ Boost จำลอง (ตอบสนองทันที Fast Response) ---
+            // 🧪 --- ระบบทดสอบ Boost จำลอง ---
             if (interaction.commandName === 'test-boost') {
+                await interaction.deferReply({ ephemeral: true });
+
                 const boostConfig = client.boostConfigs.get(interaction.guild.id) || {
                     channelId: interaction.channel.id,
                     title: '🚀 ขอบคุณสำหรับการ Server Boost!',
@@ -278,16 +284,13 @@ client.on('interactionCreate', async (interaction) => {
                     testEmbed.setImage(boostConfig.bannerUrl);
                 }
 
-                // ส่งเข้าห้องเป้าหมายในเบื้องหลัง
-                targetChan.send({
+                await targetChan.send({
                     content: `⚠️ **[ข้อความทดสอบระบบ BOOST]**\n${formattedContent}`,
                     embeds: [testEmbed]
                 }).catch(() => null);
 
-                // ตอบกลับผู้ใช้ทันทีโดยไม่รอ
-                return await interaction.reply({ 
-                    content: `✅ ส่งข้อความทดสอบระบบ Boost ไปที่ห้อง <#${targetChan.id}> เรียบร้อยแล้วครับ!`,
-                    ephemeral: true
+                return await interaction.editReply({ 
+                    content: `✅ ส่งข้อความทดสอบระบบ Boost ไปที่ห้อง <#${targetChan.id}> เรียบร้อยแล้วครับ!`
                 });
             }
 
@@ -307,6 +310,8 @@ client.on('interactionCreate', async (interaction) => {
             }
 
             if (interaction.commandName === 'setup_dropdown') {
+                await interaction.deferReply({ ephemeral: true });
+
                 const messageId = interaction.options.getString('message_id').trim();
                 const placeholder = interaction.options.getString('placeholder');
                 const imageUrl = interaction.options.getString('image_url').trim();
@@ -318,15 +323,12 @@ client.on('interactionCreate', async (interaction) => {
                 }
 
                 let targetMessage = interaction.channel.messages.cache.get(messageId);
-
                 if (!targetMessage) {
-                    await interaction.deferReply({ ephemeral: true });
                     targetMessage = await interaction.channel.messages.fetch(messageId).catch(() => null);
                 }
 
                 if (!targetMessage) {
-                    const msg = '❌ หาข้อความไม่พบ! กรุณาตรวจสอบ ID ข้อความอีกครั้ง';
-                    return interaction.deferred ? await interaction.editReply({ content: msg }) : await interaction.reply({ content: msg, ephemeral: true });
+                    return await interaction.editReply({ content: '❌ หาข้อความไม่พบ! กรุณาตรวจสอบ ID ข้อความอีกครั้ง' });
                 }
 
                 const selectMenu = new StringSelectMenuBuilder()
@@ -357,8 +359,7 @@ client.on('interactionCreate', async (interaction) => {
 
                 if (targetMessage.author.id === client.user.id) {
                     await targetMessage.edit({ embeds: embedsToUse, components: [row] });
-                    const resContent = `✅ แก้ไขข้อความและอัปเดตรูปภาพเรียบร้อย!`;
-                    return interaction.deferred ? await interaction.editReply({ content: resContent }) : await interaction.reply({ content: resContent, ephemeral: true });
+                    return await interaction.editReply({ content: '✅ แก้ไขข้อความและอัปเดตรูปภาพเรียบร้อย!' });
                 } else {
                     const payload = {
                         content: targetMessage.content || null,
@@ -368,9 +369,7 @@ client.on('interactionCreate', async (interaction) => {
                     };
 
                     await targetMessage.channel.send(payload);
-
-                    const resContent = `✅ บอทได้ทำการสร้างข้อความใหม่พร้อมแนบ Dropdown ในห้อง <#${targetMessage.channel.id}> เรียบร้อย!`;
-                    return interaction.deferred ? await interaction.editReply({ content: resContent }) : await interaction.reply({ content: resContent, ephemeral: true });
+                    return await interaction.editReply({ content: `✅ บอทได้ทำการสร้างข้อความใหม่พร้อมแนบ Dropdown ในห้อง <#${targetMessage.channel.id}> เรียบร้อย!` });
                 }
             }
         }
@@ -415,6 +414,8 @@ client.on('interactionCreate', async (interaction) => {
 
         if (interaction.isModalSubmit()) {
             if (interaction.customId.startsWith('modal_config_')) {
+                await interaction.deferReply({ ephemeral: true });
+
                 const title = interaction.fields.getTextInputValue('cfg_title');
                 const desc = interaction.fields.getTextInputValue('cfg_desc');
                 const btnLabel = interaction.fields.getTextInputValue('cfg_btn_label');
@@ -443,10 +444,12 @@ client.on('interactionCreate', async (interaction) => {
                 const btn = new ButtonBuilder().setCustomId(customIdBtn).setLabel(btnLabel).setEmoji(emoji).setStyle(btnStyle);
 
                 await interaction.channel.send({ embeds: [embed], components: [new ActionRowBuilder().addComponents(btn)] });
-                return await interaction.reply({ content: '✅ สร้างระบบพร้อมใช้งานเรียบร้อยแล้ว!', ephemeral: true });
+                return await interaction.editReply({ content: '✅ สร้างระบบพร้อมใช้งานเรียบร้อยแล้ว!' });
             }
 
             if (interaction.customId === 'modal_cmd_ticket_submit') {
+                await interaction.deferReply({ ephemeral: true });
+
                 const detailVal = interaction.fields.getTextInputValue('input_detail');
                 const reportChannel = interaction.guild.channels.cache.get(REPORT_LOG_CHANNEL_ID);
 
@@ -459,10 +462,12 @@ client.on('interactionCreate', async (interaction) => {
                     ).setTimestamp();
 
                 if (reportChannel) await reportChannel.send({ embeds: [embed] });
-                return await interaction.reply({ content: '✅ ส่งข้อมูลให้ทีมงานเรียบร้อยแล้ว!', ephemeral: true });
+                return await interaction.editReply({ content: '✅ ส่งข้อมูลให้ทีมงานเรียบร้อยแล้ว!' });
             }
 
             if (interaction.customId === 'modal_cmd_report_submit') {
+                await interaction.deferReply({ ephemeral: true });
+
                 const targetUser = interaction.fields.getTextInputValue('report_target_user');
                 const reason = interaction.fields.getTextInputValue('report_reason');
                 const detail = interaction.fields.getTextInputValue('report_detail');
@@ -479,16 +484,18 @@ client.on('interactionCreate', async (interaction) => {
                     ).setTimestamp();
 
                 if (reportChannel) await reportChannel.send({ embeds: [embed] });
-                return await interaction.reply({ content: '✅ ส่งรายงานให้ทีมงานเรียบร้อยแล้ว!', ephemeral: true });
+                return await interaction.editReply({ content: '✅ ส่งรายงานให้ทีมงานเรียบร้อยแล้ว!' });
             }
 
             if (interaction.customId === 'modal_cmd_admin_submit') {
+                await interaction.deferReply({ ephemeral: true });
+
                 const rawUser = interaction.fields.getTextInputValue('admin_target_user').replace(/[<@!>]/g, '').trim();
                 const reason = interaction.fields.getTextInputValue('admin_reason');
                 const problem = interaction.fields.getTextInputValue('admin_problem');
 
                 const targetMember = await interaction.guild.members.fetch(rawUser).catch(() => null);
-                if (!targetMember) return interaction.reply({ content: '❌ ไม่พบผู้ใช้คนนี้ในเซิร์ฟเวอร์', ephemeral: true });
+                if (!targetMember) return interaction.editReply({ content: '❌ ไม่พบผู้ใช้คนนี้ในเซิร์ฟเวอร์' });
 
                 const selectMenu = new StringSelectMenuBuilder()
                     .setCustomId(`menu_admin_penalty_${targetMember.id}`)
@@ -501,20 +508,21 @@ client.on('interactionCreate', async (interaction) => {
                 client.adminTempData = client.adminTempData || new Map();
                 client.adminTempData.set(targetMember.id, { reason, problem });
 
-                return await interaction.reply({
+                return await interaction.editReply({
                     content: `🎯 **ผู้ถูกจัดการ:** <@${targetMember.id}>\n📝 **เหตุผล:** ${reason}\n⚠️ **ปัญหา:** ${problem}\n\n👇 **เลือกลงโทษ:**`,
-                    components: [new ActionRowBuilder().addComponents(selectMenu)],
-                    ephemeral: true
+                    components: [new ActionRowBuilder().addComponents(selectMenu)]
                 });
             }
 
             if (interaction.customId.startsWith('modal_admin_ban_time_')) {
+                await interaction.deferReply({ ephemeral: true });
+
                 const targetId = interaction.customId.replace('modal_admin_ban_time_', '');
                 const durationStr = interaction.fields.getTextInputValue('ban_duration');
                 const tempData = client.adminTempData?.get(targetId) || { reason: 'ไม่ได้ระบุ', problem: 'ไม่ได้ระบุ' };
                 const targetMember = await interaction.guild.members.fetch(targetId).catch(() => null);
 
-                if (!targetMember) return interaction.reply({ content: '❌ ไม่พบผู้ใช้คนนี้แล้ว', ephemeral: true });
+                if (!targetMember) return interaction.editReply({ content: '❌ ไม่พบผู้ใช้คนนี้แล้ว' });
 
                 if (BANNED_ROLE_ID) await targetMember.roles.add(BANNED_ROLE_ID).catch(() => null);
 
@@ -538,7 +546,7 @@ client.on('interactionCreate', async (interaction) => {
                     ).setThumbnail(targetMember.user.displayAvatarURL()).setTimestamp();
 
                 if (banLogChan) await banLogChan.send({ embeds: [banEmbed] });
-                return await interaction.reply({ content: `✅ ดำเนินการแบน <@${targetId}> ระยะเวลา \`${durationStr}\` เรียบร้อย!`, ephemeral: true });
+                return await interaction.editReply({ content: `✅ ดำเนินการแบน <@${targetId}> ระยะเวลา \`${durationStr}\` เรียบร้อย!` });
             }
         }
 
@@ -579,6 +587,8 @@ client.on('interactionCreate', async (interaction) => {
             }
 
             if (interaction.customId === 'select_dynamic_roles') {
+                await interaction.deferReply({ ephemeral: true });
+
                 const selectedRoleIds = interaction.values;
                 const member = interaction.member;
                 const allMenuRoleIds = interaction.component.options.map(opt => opt.value);
@@ -596,10 +606,10 @@ client.on('interactionCreate', async (interaction) => {
                         }
                     }
 
-                    return await interaction.reply({ content: '✅ อัปเดตยศของคุณเรียบร้อยแล้ว!', ephemeral: true });
+                    return await interaction.editReply({ content: '✅ อัปเดตยศของคุณเรียบร้อยแล้ว!' });
                 } catch (error) {
                     console.error(error);
-                    return await interaction.reply({ content: '❌ เกิดข้อผิดพลาดในการปรับเปลี่ยนยศ', ephemeral: true });
+                    return await interaction.editReply({ content: '❌ เกิดข้อผิดพลาดในการปรับเปลี่ยนยศ' });
                 }
             }
         }
