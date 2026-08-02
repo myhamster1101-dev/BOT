@@ -25,6 +25,7 @@ const client = new Client({
     ]
 });
 
+// ดึงค่าการตั้งค่าจาก Environment Variables
 const TOKEN = process.env.DISCORD_TOKEN;
 const CLIENT_ID = process.env.CLIENT_ID;
 const BLACKLIST_CHANNEL_ID = process.env.BLACKLIST_CHANNEL_ID;
@@ -32,7 +33,7 @@ const REPORT_LOG_CHANNEL_ID = process.env.REPORT_LOG_CHANNEL_ID;
 const BAN_LOG_CHANNEL_ID = process.env.BAN_LOG_CHANNEL_ID;
 const BANNED_ROLE_ID = process.env.BANNED_ROLE_ID;
 
-// 🟢 เพิ่ม ID ห้องสำหรับส่งข้อความขอบคุณคน Boost
+// 🚀 ID ห้องสำหรับแจ้งเตือนขอบคุณคน Boost
 const BOOST_LOG_CHANNEL_ID = process.env.BOOST_LOG_CHANNEL_ID;
 
 // ตัวแปรเก็บการตั้งค่าระบบพิมพ์จุด
@@ -139,7 +140,7 @@ client.on('interactionCreate', async (interaction) => {
                 const embed = new EmbedBuilder()
                     .setTitle('⚙️ ตั้งค่าระบบพิมพ์จุดรับยศสำเร็จ!')
                     .setColor(0x2ECC71)
-                    .setDescription(`เมื่อมีสมาชิกพิมพ์จุด \`.\` ในห้อง <#${targetChannel.id}> บอทจะมอบยศ **${targetRole.name}** ให้ทันทีครับ!`)
+                    .setDescription(`เมื่อมีสมาชิกพิมพ์จุด \`.\` ในห้อง <#${targetChannel.id}> บอทจะทำการแปะอิโมจิ ✅ และมอบยศ **${targetRole.name}** ให้ทันทีครับ!`)
                     .setTimestamp();
 
                 return await interaction.reply({ embeds: [embed], ephemeral: true });
@@ -249,7 +250,7 @@ client.on('interactionCreate', async (interaction) => {
             }
         }
 
-        // --- BUTTON & MODAL HANDLERS (เหมือนเดิม) ---
+        // --- BUTTON & MODAL HANDLERS ---
         if (interaction.isButton()) {
             if (interaction.customId === 'btn_cmd_ticket') {
                 const modal = new ModalBuilder().setCustomId('modal_cmd_ticket_submit').setTitle('📝 แบบฟอร์มส่งเรื่องร้องเรียน');
@@ -488,11 +489,10 @@ client.on('interactionCreate', async (interaction) => {
 // 🚀 ระบบตรวจจับการ Server Boost (ส่งข้อความขอบคุณ)
 // --------------------------------------------------
 client.on('guildMemberUpdate', async (oldMember, newMember) => {
-    // เช็กว่ามีการเปลี่ยนสถานะการ Boost หรือไม่
     const oldBoost = oldMember.premiumSince;
     const newBoost = newMember.premiumSince;
 
-    // ถ้าเดิมไม่มี Boost แต่ใหม่มี Boost (แปลว่าพึ่งกด Boost!)
+    // ถ้าพบการกด Server Boost
     if (!oldBoost && newBoost) {
         const boostChannel = newMember.guild.channels.cache.get(BOOST_LOG_CHANNEL_ID);
         if (!boostChannel) return;
@@ -502,7 +502,7 @@ client.on('guildMemberUpdate', async (oldMember, newMember) => {
 
         const boostEmbed = new EmbedBuilder()
             .setTitle('🚀 ขอบคุณสำหรับการ Server Boost!')
-            .setColor(0xF47FFF) // สีชมพูประกายดิสคอร์ด
+            .setColor(0xF47FFF)
             .setDescription(`💖 ขอบคุณคุณ <@${newMember.id}> มากๆ นะครับที่ช่วยสนับสนุนเซิร์ฟเวอร์ **${newMember.guild.name}** ของพวกเรา!\n\nการสนับสนุนของคุณมีความหมายกับพวกเรามากเลยครับ! ✨`)
             .addFields(
                 { name: '💎 ยอด Boost รวมในเซิร์ฟเวอร์', value: `\`${totalBoosts}\` บูสต์`, inline: true },
@@ -512,7 +512,6 @@ client.on('guildMemberUpdate', async (oldMember, newMember) => {
             .setFooter({ text: 'ขอบคุณที่ร่วมเป็นส่วนหนึ่งในการพัฒนาเซิร์ฟเวอร์ครับ 💖' })
             .setTimestamp();
 
-        // ส่งข้อความแท็กเรียก พร้อมแนบ Embed ขอบคุณ
         await boostChannel.send({
             content: `🎉 **NEW BOOST!** ขอบคุณ <@${newMember.id}> มากครับ! 🚀✨`,
             embeds: [boostEmbed]
@@ -521,7 +520,7 @@ client.on('guildMemberUpdate', async (oldMember, newMember) => {
 });
 
 // --------------------------------------------------
-// 🔴 ระบบตรวจสอบข้อความ พิมพ์จุด (.) เพื่อรับยศ
+// 🔴 ระบบตรวจสอบข้อความ พิมพ์จุด (.) รับยศ (+แปะอิโมจิ ✅)
 // --------------------------------------------------
 client.on('messageCreate', async (message) => {
     if (message.author.bot || !message.guild) return;
@@ -529,21 +528,37 @@ client.on('messageCreate', async (message) => {
     const roleId = client.dotRoleConfigs.get(message.channel.id);
     if (roleId) {
         if (message.content.trim() === '.' || message.content.length > 0) {
-            await message.delete().catch(() => null);
-
             try {
                 const role = message.guild.roles.cache.get(roleId);
                 if (!role) return;
 
+                // 1. สมาชิกมียศอยู่แล้ว
                 if (message.member.roles.cache.has(roleId)) {
-                    return message.channel.send(`⚠️ <@${message.author.id}> คุณมียศ **${role.name}** อยู่แล้วครับ!`)
-                        .then(msg => setTimeout(() => msg.delete().catch(() => null), 4000));
+                    await message.react('⚠️').catch(() => null);
+                    
+                    const warnMsg = await message.channel.send(`⚠️ <@${message.author.id}> คุณมียศ **${role.name}** อยู่แล้วครับ!`);
+                    
+                    setTimeout(() => {
+                        message.delete().catch(() => null);
+                        warnMsg.delete().catch(() => null);
+                    }, 4000);
+                    return;
                 }
 
+                // 2. มอบยศ
                 await message.member.roles.add(role);
 
-                return message.channel.send(`🎉 ยินดีต้อนรับ <@${message.author.id}> ! บอทได้มอบยศ **${role.name}** ให้เรียบร้อยแล้วครับ ✅`)
-                    .then(msg => setTimeout(() => msg.delete().catch(() => null), 5000));
+                // 3. แปะอิโมจิ ✅ ใส่มือข้อความจุดของสมาชิก
+                await message.react('✅').catch(() => null);
+
+                // 4. ส่งข้อความต้อนรับ
+                const successMsg = await message.channel.send(`🎉 ยินดีต้อนรับ <@${message.author.id}> ! บอทได้มอบยศ **${role.name}** ให้เรียบร้อยแล้วครับ ✅`);
+
+                // 5. หน่วงเวลา 4 วินาทีแล้วทำการลบข้อความจุดและข้อความต้อนรับ
+                setTimeout(() => {
+                    message.delete().catch(() => null);
+                    successMsg.delete().catch(() => null);
+                }, 4000);
 
             } catch (error) {
                 console.error('❌ เกิดข้อผิดพลาดในการมอบยศ:', error);
