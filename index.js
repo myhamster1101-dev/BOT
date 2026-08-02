@@ -13,7 +13,8 @@ const {
     REST,
     Routes,
     SlashCommandBuilder,
-    PermissionFlagsBits
+    PermissionFlagsBits,
+    AttachmentBuilder
 } = require('discord.js');
 
 const client = new Client({
@@ -28,12 +29,34 @@ const client = new Client({
 const TOKEN = process.env.DISCORD_TOKEN;
 const CLIENT_ID = process.env.CLIENT_ID;
 
-// 🟢 Global State Storage
+// 🟢 Global State Memory
 client.dotRoleConfigs = client.dotRoleConfigs || new Map();
+client.welcomeConfigs = client.welcomeConfigs || new Map();
 client.userBalances = client.userBalances || new Map();
 client.shopItems = client.shopItems || new Map();
 client.shopLogsConfig = client.shopLogsConfig || new Map();
 client.shopMessageConfigs = client.shopMessageConfigs || new Map();
+
+// 🛠️ Safe Color Parser
+function parseColor(colorInput) {
+    if (!colorInput) return '#2ECC71';
+    const cleanHex = colorInput.replace('#', '');
+    if (/^[0-9A-Fa-f]{6}$/.test(cleanHex)) {
+        return `#${cleanHex}`;
+    }
+    return '#2ECC71';
+}
+
+// 🛠️ Safe URL Validator
+function isValidHttpUrl(string) {
+    let url;
+    try {
+        url = new URL(string);
+    } catch (_) {
+        return false;  
+    }
+    return url.protocol === "http:" || url.protocol === "https:";
+}
 
 // 🛠️ Safe Tag Parser
 function parseCustomTags(text, guild, member) {
@@ -58,6 +81,17 @@ function parseCustomTags(text, guild, member) {
 
 // 📌 Slash Commands Definitions
 const commands = [
+    new SlashCommandBuilder()
+        .setName('setup-welcome')
+        .setDescription('ตั้งค่าระบบต้อนรับสมาชิกใหม่')
+        .setDefaultMemberPermissions(PermissionFlagsBits.Administrator)
+        .addChannelOption(opt => opt.setName('channel').setDescription('เลือกห้องส่งข้อความต้อนรับ').setRequired(true))
+        .addRoleOption(opt => opt.setName('role').setDescription('ยศที่จะแจกให้อัตโนมัติ').setRequired(false))
+        .addStringOption(opt => opt.setName('title').setDescription('หัวข้อ Embed').setRequired(false))
+        .addStringOption(opt => opt.setName('description').setDescription('ข้อความต้อนรับ').setRequired(false))
+        .addStringOption(opt => opt.setName('banner_url').setDescription('ลิงก์รูป Banner').setRequired(false))
+        .addStringOption(opt => opt.setName('color').setDescription('โค้ดสี HEX').setRequired(false)),
+
     new SlashCommandBuilder()
         .setName('setup-dot-role')
         .setDescription('ตั้งค่าห้องและยศสำหรับระบบพิมพ์จุด (.) รับยศ')
@@ -122,6 +156,41 @@ client.on('ready', async () => {
     }
 });
 
+// 🔴 ระบบต้อนรับสมาชิกใหม่ (Guild Member Add)
+client.on('guildMemberAdd', async (member) => {
+    try {
+        const welcomeCfg = client.welcomeConfigs.get(member.guild.id);
+        if (!welcomeCfg) return;
+
+        const channel = member.guild.channels.cache.get(welcomeCfg.channelId);
+        if (!channel || !channel.isTextBased()) return;
+
+        // ให้ยศอัตโนมัติหากมีการตั้งค่าไว้
+        if (welcomeCfg.roleId) {
+            const autoRole = member.guild.roles.cache.get(welcomeCfg.roleId);
+            if (autoRole) await member.roles.add(autoRole).catch(() => null);
+        }
+
+        const title = parseCustomTags(welcomeCfg.title || '🎉 ยินดีต้อนรับสมาชิกใหม่!', member.guild, member);
+        const description = parseCustomTags(welcomeCfg.description || 'ยินดีต้อนรับ {user} เข้าสู่ {guild}!', member.guild, member);
+
+        const welcomeEmbed = new EmbedBuilder()
+            .setTitle(title)
+            .setColor(parseColor(welcomeCfg.color))
+            .setDescription(description)
+            .setThumbnail(member.user.displayAvatarURL({ dynamic: true }))
+            .setTimestamp();
+
+        if (welcomeCfg.bannerUrl && isValidHttpUrl(welcomeCfg.bannerUrl)) {
+            welcomeEmbed.setImage(welcomeCfg.bannerUrl);
+        }
+
+        await channel.send({ content: `✨ Welcome <@${member.id}>!`, embeds: [welcomeEmbed] }).catch(() => null);
+    } catch (err) {
+        console.error('Welcome Event Error:', err);
+    }
+});
+
 // 🔴 ระบบพิมพ์จุด (.) เพื่อรับยศ
 client.on('messageCreate', async (message) => {
     try {
@@ -154,11 +223,33 @@ client.on('interactionCreate', async (interaction) => {
         if (interaction.isChatInputCommand()) {
             await interaction.deferReply({ ephemeral: true }).catch(() => null);
 
+            if (interaction.commandName === 'setup-welcome') {
+                const channel = interaction.options.getChannel('channel');
+                const role = interaction.options.getRole('role');
+                const title = interaction.options.getString('title');
+                const description = interaction.options.getString('description');
+                const bannerUrl = interaction.options.getString('banner_url');
+                const colorRaw = interaction.options.getString('color');
+
+                client.welcomeConfigs.set(interaction.guild.id, {
+                    channelId: channel.id,
+                    roleId: role ? role.id : null,
+                    title, description, bannerUrl,
+                    color: parseColor(colorRaw)
+                });
+
+                return await interaction.editReply({ content: `✅ ตั้งค่าระบบต้อนรับสมาชิกใหม่ในห้อง <#${channel.id}> เรียบร้อยแล้ว!` });
+            }
+
             if (interaction.commandName === 'setup-dot-role') {
                 const channel = interaction.options.getChannel('channel');
                 const role = interaction.options.getRole('role');
                 const bannerUrl = interaction.options.getString('banner_url');
-                const color = interaction.options.getString('color') || '#2ECC71';
+                const colorRaw = interaction.options.getString('color');
+
+                if (!channel || !channel.isTextBased()) {
+                    return await interaction.editReply({ content: '❌ กรุณาเลือกห้องข้อความที่ถูกต้อง' });
+                }
 
                 client.dotRoleConfigs.set(interaction.guild.id, {
                     channelId: channel.id,
@@ -167,13 +258,23 @@ client.on('interactionCreate', async (interaction) => {
 
                 const embed = new EmbedBuilder()
                     .setTitle('🔴 ระบบพิมพ์จุด (.) เพื่อรับยศ')
-                    .setColor(color)
+                    .setColor(parseColor(colorRaw))
                     .setDescription(`พิมพ์จุด \`.\` ในช่องนี้เพื่อรับยศ <@&${role.id}> อัตโนมัติ!`)
                     .setTimestamp();
 
-                if (bannerUrl && bannerUrl.startsWith('http')) embed.setImage(bannerUrl);
+                if (bannerUrl && isValidHttpUrl(bannerUrl)) {
+                    embed.setImage(bannerUrl);
+                }
 
-                await channel.send({ embeds: [embed] }).catch(() => null);
+                const sentMsg = await channel.send({ embeds: [embed] }).catch(err => {
+                    console.error('Failed to send embed:', err);
+                    return null;
+                });
+
+                if (!sentMsg) {
+                    return await interaction.editReply({ content: `❌ บอทไม่สามารถส่งข้อความไปที่ห้อง <#${channel.id}> ได้ กรุณาตรวจสอบว่าบอทมีสิทธิ์ **Send Messages** และ **Embed Links** ในช่องนั้นหรือไม่` });
+                }
+
                 return await interaction.editReply({ content: `✅ ตั้งค่าระบบพิมพ์จุดในห้อง <#${channel.id}> สำหรับยศ <@&${role.id}> เรียบร้อยแล้ว!` });
             }
 
@@ -186,15 +287,17 @@ client.on('interactionCreate', async (interaction) => {
                 const title = interaction.options.getString('title') || '🛒 ร้านค้าขายยศประจำเซิร์ฟเวอร์';
                 const description = interaction.options.getString('description') || 'ยินดีต้อนรับคุณ {user} เลือกซื้อยศที่ต้องการ หรือกดปุ่มเติมเงินด้านล่าง!';
                 const bannerUrl = interaction.options.getString('banner_url');
-                const color = interaction.options.getString('color') || '#F1C40F';
+                const colorRaw = interaction.options.getString('color');
 
                 const shopEmbed = new EmbedBuilder()
                     .setTitle(title)
-                    .setColor(color)
+                    .setColor(parseColor(colorRaw))
                     .setDescription(parseCustomTags(description, interaction.guild, interaction.user))
                     .setTimestamp();
 
-                if (bannerUrl && bannerUrl.startsWith('http')) shopEmbed.setImage(bannerUrl);
+                if (bannerUrl && isValidHttpUrl(bannerUrl)) {
+                    shopEmbed.setImage(bannerUrl);
+                }
 
                 const guildItems = client.shopItems.get(interaction.guild.id) || [];
                 const components = [];
@@ -240,7 +343,7 @@ client.on('interactionCreate', async (interaction) => {
                 client.shopMessageConfigs.set(interaction.guild.id, {
                     channelId: targetChannel.id,
                     messageId: sentMsg.id,
-                    title, description, bannerUrl, color
+                    title, description, bannerUrl, color: parseColor(colorRaw)
                 });
 
                 return await interaction.editReply({ content: `✅ สร้างหน้าร้านค้าในช่อง <#${targetChannel.id}> สำเร็จ!` });
@@ -334,7 +437,9 @@ client.on('interactionCreate', async (interaction) => {
                     .setDescription(`👤 **ชื่อบัญชี:** \`${logsCfg?.accountName || 'กรุณาสอบถามแอดมิน'}\`\n💳 **เลขบัญชี/พร้อมเพย์:** \`${logsCfg?.promptpay || 'กรุณาสอบถามแอดมิน'}\``)
                     .setTimestamp();
 
-                if (logsCfg?.qrCodeUrl && logsCfg.qrCodeUrl.startsWith('http')) ppEmbed.setImage(logsCfg.qrCodeUrl);
+                if (logsCfg?.qrCodeUrl && isValidHttpUrl(logsCfg.qrCodeUrl)) {
+                    ppEmbed.setImage(logsCfg.qrCodeUrl);
+                }
                 return await interaction.reply({ embeds: [ppEmbed], ephemeral: true });
             }
         }
@@ -391,7 +496,7 @@ client.on('interactionCreate', async (interaction) => {
     } catch (globalErr) {
         console.error('Unhandled Interaction Error:', globalErr);
         if (interaction.deferred || interaction.replied) {
-            await interaction.editReply({ content: '❌ เกิดข้อผิดพลาดภายในระบบ กรุณาลองใหม่อีกครั้ง' }).catch(() => null);
+            await interaction.editReply({ content: '❌ เกิดข้อผิดพลาดในการประมวลผล กรุณาตรวจสอบลิงก์ Banner หรือการตั้งค่าสี HEX' }).catch(() => null);
         }
     }
 });
