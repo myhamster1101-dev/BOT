@@ -131,6 +131,12 @@ const commands = [
                 .setDescription('โค้ดสี HEX เช่น #F47FFF หรือ PINK')
                 .setRequired(false)),
 
+    // 🧪 คำสั่งจำลองทดสอบระบบ Boost
+    new SlashCommandBuilder()
+        .setName('test-boost')
+        .setDescription('ทดสอบส่งข้อความแจ้งเตือน Boost จำลองไปยังห้องที่ตั้งค่าไว้')
+        .setDefaultMemberPermissions(PermissionFlagsBits.Administrator),
+
     new SlashCommandBuilder()
         .setName('setup_dropdown')
         .setDescription('เพิ่ม Dropdown เลือกยศใส่ข้อความเดิม (ใส่รูปได้)')
@@ -215,7 +221,7 @@ client.on('interactionCreate', async (interaction) => {
                 return await interaction.reply({ embeds: [embed], ephemeral: true });
             }
 
-            // 🚀 --- ตั้งค่าระบบขอบคุณคน Boost รองรับคำสั่ง {} ---
+            // 🚀 --- ตั้งค่าระบบขอบคุณคน Boost ---
             if (interaction.commandName === 'setup-boost') {
                 const targetChannel = interaction.options.getChannel('channel');
                 const title = interaction.options.getString('title') || '🚀 ขอบคุณสำหรับการ Server Boost!';
@@ -233,18 +239,60 @@ client.on('interactionCreate', async (interaction) => {
                     color
                 });
 
-                // ลองแสดงตัวอย่าง Preview
-                const sampleTitle = parseCustomTags(title, interaction.guild, interaction.member);
-                const sampleDesc = parseCustomTags(description, interaction.guild, interaction.member);
-                const sampleContent = parseCustomTags(contentMessage, interaction.guild, interaction.member);
-
                 const previewEmbed = new EmbedBuilder()
                     .setTitle('⚙️ ตั้งค่าระบบแจ้งเตือน Boost เรียบร้อย!')
                     .setColor(0x2ECC71)
-                    .setDescription(`ตั้งค่าแจ้งเตือนไว้ที่ห้อง <#${targetChannel.id}> เรียบร้อยครับ!\n\n**📌 ตัวอย่างข้อความที่จะแสดงจริง:**\n**ข้อความด้านนอก:** ${sampleContent}\n\n** Embed Title:** ${sampleTitle}\n** Embed Desc:**\n${sampleDesc}`)
+                    .setDescription(`ตั้งค่าการแจ้งเตือนไว้ที่ห้อง <#${targetChannel.id}> เรียบร้อยครับ!\n\n💡 **คุณสามารถพิมพ์ `/test-boost` เพื่อทดสอบระบบได้ทันที!**`)
                     .setTimestamp();
 
                 return await interaction.reply({ embeds: [previewEmbed], ephemeral: true });
+            }
+
+            // 🧪 --- ระบบทดสอบ Boost จำลอง ---
+            if (interaction.commandName === 'test-boost') {
+                const boostConfig = client.boostConfigs.get(interaction.guild.id) || {
+                    channelId: interaction.channel.id, // หากยังไม่ได้ตั้งค่าให้ทดสอบส่งห้องปัจจุบัน
+                    title: '🚀 ขอบคุณสำหรับการ Server Boost!',
+                    description: '💖 ขอบคุณคุณ {user} มากๆ นะครับที่ช่วยสนับสนุนเซิร์ฟเวอร์ **{guild}**!\n\nแวะไปพูดคุยกับเพื่อนๆ ได้ที่ห้อง {#พูดคุย-ทั่วไป} หรือดูสิทธิ์พิเศษที่ยศ {@Booster} ได้เลย!',
+                    contentMessage: '🎉 **TEST BOOST!** ขอบคุณ {user} มากๆ ครับ! 🚀✨',
+                    bannerUrl: null,
+                    color: '#F47FFF'
+                };
+
+                const targetChan = interaction.guild.channels.cache.get(boostConfig.channelId) || interaction.channel;
+
+                // แปลงคำสั่ง {} ตัวแปรจำลองด้วยข้อมูลของคุณเอง
+                const formattedTitle = parseCustomTags(boostConfig.title, interaction.guild, interaction.member);
+                const formattedDesc = parseCustomTags(boostConfig.description, interaction.guild, interaction.member);
+                const formattedContent = parseCustomTags(boostConfig.contentMessage, interaction.guild, interaction.member);
+
+                const testEmbed = new EmbedBuilder()
+                    .setTitle(formattedTitle)
+                    .setColor(boostConfig.color || '#F47FFF')
+                    .setDescription(formattedDesc)
+                    .addFields(
+                        { name: '👤 ผู้สนับสนุน (Booster)', value: `<@${interaction.user.id}>`, inline: true },
+                        { name: '💎 ยอด Boost รวม', value: `\`${interaction.guild.premiumSubscriptionCount || 0}\` บูสต์`, inline: true },
+                        { name: '⭐ Server Level', value: `\`Level ${interaction.guild.premiumTier}\``, inline: true }
+                    )
+                    .setThumbnail(interaction.user.displayAvatarURL({ dynamic: true }))
+                    .setFooter({ text: `${interaction.guild.name} • (ทดสอบระบบ Boost) 💖` })
+                    .setTimestamp();
+
+                if (boostConfig.bannerUrl && boostConfig.bannerUrl.startsWith('http')) {
+                    testEmbed.setImage(boostConfig.bannerUrl);
+                }
+
+                // ส่งข้อความทดสอบไปยังห้องที่ตั้งค่าไว้
+                await targetChan.send({
+                    content: `⚠️ **[ข้อความทดสอบระบบ BOOST]**\n${formattedContent}`,
+                    embeds: [testEmbed]
+                });
+
+                return await interaction.reply({ 
+                    content: `✅ ส่งข้อความทดสอบระบบ Boost ไปที่ห้อง <#${targetChan.id}> เรียบร้อยแล้วครับ!`, 
+                    ephemeral: true 
+                });
             }
 
             if (interaction.commandName === 'setup-ticket') {
@@ -586,7 +634,7 @@ client.on('interactionCreate', async (interaction) => {
 });
 
 // --------------------------------------------------
-// 🚀 ระบบตรวจจับ Boost พร้อมระบบ แปลงแท็กคำสั่ง {} อัตโนมัติ
+// 🚀 ระบบตรวจจับ Boost จริง
 // --------------------------------------------------
 client.on('guildMemberUpdate', async (oldMember, newMember) => {
     const oldBoost = oldMember.premiumSince;
@@ -609,7 +657,6 @@ client.on('guildMemberUpdate', async (oldMember, newMember) => {
 
         const guild = newMember.guild;
 
-        // แปลงตัวแปรคำสั่ง {} ทั้งหมดเป็นแท็กดิสคอร์ดจริง
         const formattedTitle = parseCustomTags(boostConfig.title, guild, newMember);
         const formattedDesc = parseCustomTags(boostConfig.description, guild, newMember);
         const formattedContent = parseCustomTags(boostConfig.contentMessage, guild, newMember);
@@ -632,7 +679,7 @@ client.on('guildMemberUpdate', async (oldMember, newMember) => {
         }
 
         await boostChannel.send({
-            content: formattedContent, // ส่งข้อความนอก Embed (เพื่อแท็กแจ้งเตือน)
+            content: formattedContent,
             embeds: [boostEmbed]
         }).catch(err => console.error('ส่งข้อความ Boost ล้มเหลว:', err));
     }
