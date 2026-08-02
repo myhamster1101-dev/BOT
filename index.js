@@ -25,7 +25,6 @@ const client = new Client({
     ]
 });
 
-// ดึงค่าการตั้งค่าจาก Environment Variables
 const TOKEN = process.env.DISCORD_TOKEN;
 const CLIENT_ID = process.env.CLIENT_ID;
 const BLACKLIST_CHANNEL_ID = process.env.BLACKLIST_CHANNEL_ID;
@@ -33,9 +32,37 @@ const REPORT_LOG_CHANNEL_ID = process.env.REPORT_LOG_CHANNEL_ID;
 const BAN_LOG_CHANNEL_ID = process.env.BAN_LOG_CHANNEL_ID;
 const BANNED_ROLE_ID = process.env.BANNED_ROLE_ID;
 
-// ตัวแปรเก็บ Map การตั้งค่าต่างๆ
 client.dotRoleConfigs = client.dotRoleConfigs || new Map();
-client.boostConfigs = client.boostConfigs || new Map(); // เก็บตั้งค่า Embed ตกแต่งระบบ Boost
+client.boostConfigs = client.boostConfigs || new Map();
+
+// 🛠️ ฟังก์ชันแปลงข้อความที่มีตัวแปร {} ให้กลายเป็นแท็กดิสคอร์ดจริงอัตโนมัติ
+function parseCustomTags(text, guild, member) {
+    if (!text) return '';
+
+    let parsedText = text;
+
+    // 1. แทนที่ตัวแปรพื้นฐาน
+    if (member) parsedText = parsedText.replace(/\{user\}/g, `<@${member.id}>`);
+    if (guild) {
+        parsedText = parsedText.replace(/\{guild\}/g, guild.name);
+        parsedText = parsedText.replace(/\{boosts\}/g, `${guild.premiumSubscriptionCount || 0}`);
+        parsedText = parsedText.replace(/\{level\}/g, `${guild.premiumTier}`);
+    }
+
+    // 2. แปลงตัวแปรแท็กห้องอัตโนมัติ เช่น {#ชื่อห้อง} -> <#ID>
+    parsedText = parsedText.replace(/\{#([^}]+)\}/g, (match, channelName) => {
+        const targetChan = guild.channels.cache.find(c => c.name.toLowerCase() === channelName.trim().toLowerCase());
+        return targetChan ? `<#${targetChan.id}>` : `#${channelName}`;
+    });
+
+    // 3. แปลงตัวแปรแท็กยศอัตโนมัติ เช่น {@ชื่อยศ} -> <@&ID>
+    parsedText = parsedText.replace(/\{@([^}]+)\}/g, (match, roleName) => {
+        const targetRole = guild.roles.cache.find(r => r.name.toLowerCase() === roleName.trim().toLowerCase());
+        return targetRole ? `<@&${targetRole.id}>` : `@${roleName}`;
+    });
+
+    return parsedText;
+}
 
 // 1. Slash Commands Definition
 const commands = [
@@ -75,10 +102,9 @@ const commands = [
                 .setDescription('โค้ดสี HEX เช่น #2ECC71 หรือ GREEN')
                 .setRequired(false)),
 
-    // 🚀 เพิ่มคำสั่งตั้งค่า Embed ขอบคุณคน Boost แบบกำหนดเองได้ทั้งหมด
     new SlashCommandBuilder()
         .setName('setup-boost')
-        .setDescription('ตั้งค่าและตกแต่งข้อความแจ้งเตือนเมื่อมีคน Boost เซิร์ฟเวอร์')
+        .setDescription('ตั้งค่าระบบขอบคุณคน Boost (ใช้คำสั่ง {} อัตโนมัติได้)')
         .setDefaultMemberPermissions(PermissionFlagsBits.Administrator)
         .addChannelOption(option =>
             option.setName('channel')
@@ -86,11 +112,15 @@ const commands = [
                 .setRequired(true))
         .addStringOption(option =>
             option.setName('title')
-                .setDescription('หัวข้อ Embed (เช่น: 🚀 ขอบคุณสำหรับการ Boost!)')
+                .setDescription('หัวข้อ Embed (ใช้ {user}, {guild} ได้)')
                 .setRequired(false))
         .addStringOption(option =>
             option.setName('description')
-                .setDescription('เนื้อหา (ใช้ {user} แทนแท็กคนบูสต์, {guild} แทนชื่อเซิร์ฟ)')
+                .setDescription('ข้อความ Embed (ใช้ {user}, {#ห้อง}, {@ยศ}, {guild}, {boosts} ได้)')
+                .setRequired(false))
+        .addStringOption(option =>
+            option.setName('content_message')
+                .setDescription('ข้อความแจ้งเตือนนอก Embed (ใช้ {user}, {@ยศ} แท็กคนได้หมด)')
                 .setRequired(false))
         .addStringOption(option =>
             option.setName('banner_url')
@@ -111,11 +141,11 @@ const commands = [
                 .setRequired(true))
         .addStringOption(option =>
             option.setName('placeholder')
-                .setDescription('ข้อความตัวอย่างบน Dropdown (เช่น: 🎮 เลือกยศ...)')
+                .setDescription('ข้อความตัวอย่างบน Dropdown')
                 .setRequired(true))
         .addStringOption(option =>
             option.setName('image_url')
-                .setDescription('ลิงก์รูปภาพ Banner (ถ้าไม่ใส่พิมพ์ - หรือเว้นว่างได้)')
+                .setDescription('ลิงก์รูปภาพ Banner')
                 .setRequired(true))
         .addRoleOption(option => option.setName('role1').setDescription('ยศที่ 1').setRequired(true))
         .addRoleOption(option => option.setName('role2').setDescription('ยศที่ 2').setRequired(false))
@@ -141,7 +171,7 @@ client.on('ready', async () => {
     }
 });
 
-// Helper สร้าง Modal สำหรับ Setup
+// Helper สร้าง Modal
 function createSetupModal(customId, title, defaultTitle, defaultDesc, defaultBtn) {
     const modal = new ModalBuilder().setCustomId(customId).setTitle(title);
     
@@ -159,12 +189,11 @@ function createSetupModal(customId, title, defaultTitle, defaultDesc, defaultBtn
     return modal;
 }
 
-// 2. Main Interaction Listener
+// 2. Interaction Listener
 client.on('interactionCreate', async (interaction) => {
     try {
         if (interaction.isChatInputCommand()) {
 
-            // --- ตั้งค่าระบบพิมพ์จุดรับยศ ---
             if (interaction.commandName === 'setup-dot-role') {
                 const targetChannel = interaction.options.getChannel('channel');
                 const targetRole = interaction.options.getRole('role');
@@ -180,17 +209,18 @@ client.on('interactionCreate', async (interaction) => {
                 const embed = new EmbedBuilder()
                     .setTitle('⚙️ ตั้งค่าระบบพิมพ์จุดรับยศสำเร็จ!')
                     .setColor(0x2ECC71)
-                    .setDescription(`เมื่อมีสมาชิกพิมพ์จุด \`.\` ในห้อง <#${targetChannel.id}> \n- บอทจะทำการกด **✅ ถาวร** บนข้อความ\n- มอบยศ **${targetRole.name}**\n- ส่งข้อความ Embed ตอบกลับสุดเท่!`)
+                    .setDescription(`ตั้งค่าการรับยศ **${targetRole.name}** ในห้อง <#${targetChannel.id}> เรียบร้อยครับ!`)
                     .setTimestamp();
 
                 return await interaction.reply({ embeds: [embed], ephemeral: true });
             }
 
-            // 🚀 --- ตั้งค่าระบบขอบคุณคน Boost (ปรับแต่งได้เต็มที่) ---
+            // 🚀 --- ตั้งค่าระบบขอบคุณคน Boost รองรับคำสั่ง {} ---
             if (interaction.commandName === 'setup-boost') {
                 const targetChannel = interaction.options.getChannel('channel');
                 const title = interaction.options.getString('title') || '🚀 ขอบคุณสำหรับการ Server Boost!';
-                const description = interaction.options.getString('description') || '💖 ขอบคุณคุณ {user} มากๆ นะครับที่ช่วยสนับสนุนเซิร์ฟเวอร์ **{guild}** ของพวกเรา!\n\nการสนับสนุนของคุณมีความหมายกับพวกเรามากเลยครับ! ✨';
+                const description = interaction.options.getString('description') || '💖 ขอบคุณคุณ {user} มากๆ นะครับที่ช่วยสนับสนุนเซิร์ฟเวอร์ **{guild}**!\n\nแวะไปพูดคุยกับเพื่อนๆ ได้ที่ห้อง {#พูดคุย-ทั่วไป} หรือดูสิทธิ์พิเศษที่ยศ {@Booster} ได้เลย!';
+                const contentMessage = interaction.options.getString('content_message') || '🎉 **NEW BOOST!** ขอบคุณ {user} มากๆ ครับ! 🚀✨';
                 const bannerUrl = interaction.options.getString('banner_url') || null;
                 const color = interaction.options.getString('color') || '#F47FFF';
 
@@ -198,18 +228,20 @@ client.on('interactionCreate', async (interaction) => {
                     channelId: targetChannel.id,
                     title,
                     description,
+                    contentMessage,
                     bannerUrl,
                     color
                 });
 
+                // ลองแสดงตัวอย่าง Preview
+                const sampleTitle = parseCustomTags(title, interaction.guild, interaction.member);
+                const sampleDesc = parseCustomTags(description, interaction.guild, interaction.member);
+                const sampleContent = parseCustomTags(contentMessage, interaction.guild, interaction.member);
+
                 const previewEmbed = new EmbedBuilder()
                     .setTitle('⚙️ ตั้งค่าระบบแจ้งเตือน Boost เรียบร้อย!')
                     .setColor(0x2ECC71)
-                    .setDescription(`ระบบจะส่งข้อความแจ้งเตือนไปที่ห้อง <#${targetChannel.id}> เมื่อมีคน Boost เซิร์ฟเวอร์ครับ!`)
-                    .addFields(
-                        { name: '📌 หัวข้อตั้งไว้', value: title, inline: false },
-                        { name: '📝 ข้อความตั้งไว้', value: description, inline: false }
-                    )
+                    .setDescription(`ตั้งค่าแจ้งเตือนไว้ที่ห้อง <#${targetChannel.id}> เรียบร้อยครับ!\n\n**📌 ตัวอย่างข้อความที่จะแสดงจริง:**\n**ข้อความด้านนอก:** ${sampleContent}\n\n** Embed Title:** ${sampleTitle}\n** Embed Desc:**\n${sampleDesc}`)
                     .setTimestamp();
 
                 return await interaction.reply({ embeds: [previewEmbed], ephemeral: true });
@@ -244,8 +276,7 @@ client.on('interactionCreate', async (interaction) => {
                 }
 
                 try {
-                    let targetMessage = null;
-                    targetMessage = await interaction.channel.messages.fetch(messageId).catch(() => null);
+                    let targetMessage = await interaction.channel.messages.fetch(messageId).catch(() => null);
 
                     if (!targetMessage) {
                         const channels = await interaction.guild.channels.fetch();
@@ -308,7 +339,7 @@ client.on('interactionCreate', async (interaction) => {
                         await targetMessage.channel.send(payload);
 
                         return await interaction.editReply({ 
-                            content: `✅ บอทได้ทำการสร้างข้อความใหม่พร้อมแนบ Dropdown และรูปภาพในห้อง <#${targetMessage.channel.id}> ให้แล้วครับ!` 
+                            content: `✅ บอทได้ทำการสร้างข้อความใหม่พร้อมแนบ Dropdown ในห้อง <#${targetMessage.channel.id}> เรียบร้อย!` 
                         });
                     }
 
@@ -319,7 +350,7 @@ client.on('interactionCreate', async (interaction) => {
             }
         }
 
-        // --- BUTTON & MODAL HANDLERS ---
+        // --- BUTTON & MODAL & SELECT MENU HANDLERS ---
         if (interaction.isButton()) {
             if (interaction.customId === 'btn_cmd_ticket') {
                 const modal = new ModalBuilder().setCustomId('modal_cmd_ticket_submit').setTitle('📝 แบบฟอร์มส่งเรื่องร้องเรียน');
@@ -331,8 +362,8 @@ client.on('interactionCreate', async (interaction) => {
             if (interaction.customId === 'btn_cmd_report') {
                 const modal = new ModalBuilder().setCustomId('modal_cmd_report_submit').setTitle('⚠️ แบบฟอร์มรายงานผู้กระทำผิด');
                 const userInput = new TextInputBuilder().setCustomId('report_target_user').setLabel('1. แท็ก / ID ผู้กระทำผิด').setPlaceholder('ใส่ ID หรือ @username').setStyle(TextInputStyle.Short).setRequired(true);
-                const reasonInput = new TextInputBuilder().setCustomId('report_reason').setLabel('2. เหตุผลที่รายงาน').setPlaceholder('ระบุเหตุผล...').setStyle(TextInputStyle.Short).setRequired(true);
-                const detailInput = new TextInputBuilder().setCustomId('report_detail').setLabel('3. รายละเอียด/หลักฐาน').setPlaceholder('แนบรายละเอียด...').setStyle(TextInputStyle.Paragraph).setRequired(true);
+                const reasonInput = new TextInputBuilder().setCustomId('report_reason').setLabel('2. เหตุผลที่รายงาน').setStyle(TextInputStyle.Short).setRequired(true);
+                const detailInput = new TextInputBuilder().setCustomId('report_detail').setLabel('3. รายละเอียด/หลักฐาน').setStyle(TextInputStyle.Paragraph).setRequired(true);
 
                 modal.addComponents(
                     new ActionRowBuilder().addComponents(userInput),
@@ -344,8 +375,8 @@ client.on('interactionCreate', async (interaction) => {
 
             if (interaction.customId === 'btn_cmd_admin') {
                 const modal = new ModalBuilder().setCustomId('modal_cmd_admin_submit').setTitle('👤 แบบฟอร์มจัดการผู้ใช้');
-                const userInput = new TextInputBuilder().setCustomId('admin_target_user').setLabel('1. แท็ก / ID ผู้ใช้').setPlaceholder('ใส่ ID เช่น 123456789 หรือ @username').setStyle(TextInputStyle.Short).setRequired(true);
-                const reasonInput = new TextInputBuilder().setCustomId('admin_reason').setLabel('2. เหตุผลที่รายงาน').setPlaceholder('ระบุเหตุผล...').setStyle(TextInputStyle.Short).setRequired(true);
+                const userInput = new TextInputBuilder().setCustomId('admin_target_user').setLabel('1. แท็ก / ID ผู้ใช้').setPlaceholder('ใส่ ID หรือ @username').setStyle(TextInputStyle.Short).setRequired(true);
+                const reasonInput = new TextInputBuilder().setCustomId('admin_reason').setLabel('2. เหตุผลที่รายงาน').setStyle(TextInputStyle.Short).setRequired(true);
                 const problemInput = new TextInputBuilder().setCustomId('admin_problem').setLabel('3. ปัญหาที่พบจากผู้ใช้').setStyle(TextInputStyle.Paragraph).setRequired(true);
 
                 modal.addComponents(
@@ -555,19 +586,18 @@ client.on('interactionCreate', async (interaction) => {
 });
 
 // --------------------------------------------------
-// 🚀 ระบบตรวจจับการ Server Boost (ข้อความตกแต่งได้หมด)
+// 🚀 ระบบตรวจจับ Boost พร้อมระบบ แปลงแท็กคำสั่ง {} อัตโนมัติ
 // --------------------------------------------------
 client.on('guildMemberUpdate', async (oldMember, newMember) => {
     const oldBoost = oldMember.premiumSince;
     const newBoost = newMember.premiumSince;
 
-    // ตรวจจับเมื่อมีคนกด Boost เซิร์ฟเวอร์
     if (!oldBoost && newBoost) {
-        // ดึงการตั้งค่าจากคำสั่ง /setup-boost (ถ้าไม่มีจะใช้ค่าเริ่มต้น)
         const boostConfig = client.boostConfigs.get(newMember.guild.id) || {
             channelId: process.env.BOOST_LOG_CHANNEL_ID,
             title: '🚀 ขอบคุณสำหรับการ Server Boost!',
-            description: '💖 ขอบคุณคุณ {user} มากๆ นะครับที่ช่วยสนับสนุนเซิร์ฟเวอร์ **{guild}** ของพวกเรา!\n\nการสนับสนุนของคุณมีความหมายกับพวกเรามากเลยครับ! ✨',
+            description: '💖 ขอบคุณคุณ {user} มากๆ นะครับที่ช่วยสนับสนุนเซิร์ฟเวอร์ **{guild}**!\n\nแวะไปคุยกันได้ที่ห้อง {#พูดคุย-ทั่วไป} ได้เลยครับ ✨',
+            contentMessage: '🎉 **NEW BOOST!** ขอบคุณ {user} มากๆ ครับ! 🚀✨',
             bannerUrl: null,
             color: '#F47FFF'
         };
@@ -577,24 +607,24 @@ client.on('guildMemberUpdate', async (oldMember, newMember) => {
         const boostChannel = newMember.guild.channels.cache.get(boostConfig.channelId);
         if (!boostChannel) return;
 
-        const totalBoosts = newMember.guild.premiumSubscriptionCount || 0;
-        const boostLevel = newMember.guild.premiumTier;
+        const guild = newMember.guild;
 
-        // แทนที่ตัวแปร {user} และ {guild}
-        const formattedDesc = boostConfig.description
-            .replace(/\{user\}/g, `<@${newMember.id}>`)
-            .replace(/\{guild\}/g, newMember.guild.name);
+        // แปลงตัวแปรคำสั่ง {} ทั้งหมดเป็นแท็กดิสคอร์ดจริง
+        const formattedTitle = parseCustomTags(boostConfig.title, guild, newMember);
+        const formattedDesc = parseCustomTags(boostConfig.description, guild, newMember);
+        const formattedContent = parseCustomTags(boostConfig.contentMessage, guild, newMember);
 
         const boostEmbed = new EmbedBuilder()
-            .setTitle(boostConfig.title)
+            .setTitle(formattedTitle)
             .setColor(boostConfig.color || '#F47FFF')
             .setDescription(formattedDesc)
             .addFields(
-                { name: '💎 ยอด Boost รวมในเซิร์ฟเวอร์', value: `\`${totalBoosts}\` บูสต์`, inline: true },
-                { name: '⭐ Server Level', value: `\`Level ${boostLevel}\``, inline: true }
+                { name: '👤 ผู้สนับสนุน (Booster)', value: `<@${newMember.id}>`, inline: true },
+                { name: '💎 ยอด Boost รวม', value: `\`${guild.premiumSubscriptionCount || 0}\` บูสต์`, inline: true },
+                { name: '⭐ Server Level', value: `\`Level ${guild.premiumTier}\``, inline: true }
             )
             .setThumbnail(newMember.user.displayAvatarURL({ dynamic: true }))
-            .setFooter({ text: `${newMember.guild.name} • ขอบคุณสำหรับการสนับสนุน 💖` })
+            .setFooter({ text: `${guild.name} • ขอบคุณสำหรับการสนับสนุน 💖` })
             .setTimestamp();
 
         if (boostConfig.bannerUrl && boostConfig.bannerUrl.startsWith('http')) {
@@ -602,14 +632,14 @@ client.on('guildMemberUpdate', async (oldMember, newMember) => {
         }
 
         await boostChannel.send({
-            content: `🎉 **NEW BOOST!** ขอบคุณ <@${newMember.id}> มากครับ! 🚀✨`,
+            content: formattedContent, // ส่งข้อความนอก Embed (เพื่อแท็กแจ้งเตือน)
             embeds: [boostEmbed]
         }).catch(err => console.error('ส่งข้อความ Boost ล้มเหลว:', err));
     }
 });
 
 // --------------------------------------------------
-// 🔴 ระบบพิมพ์จุด (.) รับยศ (+แปะอิโมจิ ✅ ถาวร + ตอบกลับ EMBED)
+// 🔴 ระบบพิมพ์จุด (.) รับยศ
 // --------------------------------------------------
 client.on('messageCreate', async (message) => {
     if (message.author.bot || !message.guild) return;
@@ -623,7 +653,6 @@ client.on('messageCreate', async (message) => {
                 const role = message.guild.roles.cache.get(roleId);
                 if (!role) return;
 
-                // 1. ถ้าสมาชิกมียศอยู่แล้ว
                 if (message.member.roles.cache.has(roleId)) {
                     await message.react('⚠️').catch(() => null);
                     
@@ -637,13 +666,9 @@ client.on('messageCreate', async (message) => {
                     return;
                 }
 
-                // 2. มอบยศให้สมาชิก
                 await message.member.roles.add(role);
-
-                // 🟢 3. กดแสดงความยินดีใส่อิโมจิติ๊กถูก ✅ บนข้อความจุด (ถาวร)
                 await message.react('✅').catch(() => null);
 
-                // 🎨 4. ปรับแต่ง EMBED ตอบกลับ
                 const embedColor = config.color || '#2ECC71';
                 const welcomeEmbed = new EmbedBuilder()
                     .setTitle('🎉 ยินดีต้อนรับสมาชิกใหม่!')
@@ -664,7 +689,6 @@ client.on('messageCreate', async (message) => {
                     welcomeEmbed.setImage(config.bannerUrl);
                 }
 
-                // 5. ส่งข้อความ EMBED ถาวร
                 await message.channel.send({
                     content: `✨ <@${message.author.id}> ได้รับยศเรียบร้อยแล้ว!`,
                     embeds: [welcomeEmbed]
@@ -676,9 +700,6 @@ client.on('messageCreate', async (message) => {
         }
     }
 
-    // --------------------------------------------------
-    // ระบบเช็กสมาชิก !status
-    // --------------------------------------------------
     if (message.content.startsWith('!status')) {
         const COMMAND_CHANNEL_ID = process.env.COMMAND_CHANNEL_ID;
         const LOG_CHANNEL_ID = process.env.LOG_CHANNEL_ID;
