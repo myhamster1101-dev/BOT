@@ -176,11 +176,11 @@ const commands = [
     // --- ระบบร้านค้าขายยศ & เติมเงิน ---
     new SlashCommandBuilder()
         .setName('add-shop-item')
-        .setDescription('เพิ่ม/แก้ไขยศขายในร้านค้า')
+        .setDescription('เพิ่ม/แก้ไขยศขายในร้านค้า (ใส่ราคาและคำอธิบายเองได้)')
         .setDefaultMemberPermissions(PermissionFlagsBits.Administrator)
-        .addRoleOption(opt => opt.setName('role').setDescription('เลือกยศที่ต้องการขาย').setRequired(true))
-        .addIntegerOption(opt => opt.setName('price').setDescription('ราคา (บาท)').setRequired(true))
-        .addStringOption(opt => opt.setName('description').setDescription('รายละเอียดเกี่ยวกับยศนี้').setRequired(false)),
+        .addRoleOption(opt => opt.setName('role').setDescription('เลือกยศที่ต้องการวางขาย').setRequired(true))
+        .addIntegerOption(opt => opt.setName('price').setDescription('กำหนดราคา (บาท)').setRequired(true))
+        .addStringOption(opt => opt.setName('description').setDescription('คำอธิบายเพิ่มเติมเกี่ยวกับยศนี้').setRequired(false)),
 
     new SlashCommandBuilder()
         .setName('setup-shop-logs')
@@ -192,9 +192,9 @@ const commands = [
 
     new SlashCommandBuilder()
         .setName('setup-shop')
-        .setDescription('ตั้งค่าและส่งหน้าร้านค้าขายยศไปยังห้องที่ระบุ')
+        .setDescription('ตั้งค่าและส่งหน้าร้านค้าขายยศไปยังห้องที่ระบุ ID')
         .setDefaultMemberPermissions(PermissionFlagsBits.Administrator)
-        .addChannelOption(opt => opt.setName('channel').setDescription('เลือกห้องหรือระบุ ID ห้องที่ต้องการส่งหน้าร้านค้า').setRequired(true))
+        .addChannelOption(opt => opt.setName('channel').setDescription('เลือกห้อง หรือพิมพ์ระบุ ID ห้องที่ต้องการส่งหน้าร้านค้า').setRequired(true))
         .addStringOption(opt => opt.setName('title').setDescription('หัวข้อ Embed หน้าร้านค้า').setRequired(false))
         .addStringOption(opt => opt.setName('description').setDescription('คำอธิบายหน้าร้านค้า (รองรับแท็ก {user})').setRequired(false))
         .addStringOption(opt => opt.setName('banner_url').setDescription('ลิงก์ Banner รูปภาพ').setRequired(false))
@@ -462,7 +462,7 @@ client.on('interactionCreate', async (interaction) => {
                 }
 
                 client.shopItems.set(interaction.guild.id, guildItems);
-                return await interaction.editReply({ content: `✅ เพิ่ม/อัปเดตยศ **${role.name}** ราคา **${price} บาท** เข้าสู่ร้านค้าสำเร็จ!` });
+                return await interaction.editReply({ content: `✅ บันทึกยศ **${role.name}** ราคา **${price} บาท** เข้าสู่รายการร้านค้าเรียบร้อยแล้ว!\n💡 *หมายเหตุ: แอดมินสามารถใช้ `/setup-shop` เพื่อส่ง/อัปเดตหน้าร้านค้าลงในห้องที่ต้องการได้เลย*` });
             }
 
             if (interaction.commandName === 'setup-shop-logs') {
@@ -485,7 +485,7 @@ client.on('interactionCreate', async (interaction) => {
 
                 const targetChannel = interaction.options.getChannel('channel');
                 if (!targetChannel || !targetChannel.isTextBased()) {
-                    return await interaction.editReply({ content: '❌ ห้องที่เลือกไม่ใช่ห้องข้อความ กรุณาเลือกห้องใหม่อีกครั้ง' });
+                    return await interaction.editReply({ content: '❌ ห้องที่เลือกไม่ใช่ห้องข้อความ กรุณาตรวจสอบ ID ห้องใหม่อีกครั้ง' });
                 }
 
                 const title = interaction.options.getString('title') || '🛒 ร้านค้าขายยศประจำเซิร์ฟเวอร์';
@@ -493,6 +493,7 @@ client.on('interactionCreate', async (interaction) => {
                 const bannerUrl = interaction.options.getString('banner_url') || null;
                 const color = interaction.options.getString('color') || '#F1C40F';
 
+                // 🔄 ดึงรายการยศทั้งหมดที่มีการใส่ไว้ในระบบมาสร้างหน้าร้านค้าอัตโนมัติ
                 const guildItems = client.shopItems.get(interaction.guild.id) || [];
                 
                 const shopEmbed = new EmbedBuilder()
@@ -504,25 +505,19 @@ client.on('interactionCreate', async (interaction) => {
                 if (bannerUrl && bannerUrl.startsWith('http')) shopEmbed.setImage(bannerUrl);
 
                 let itemText = '';
+                const shopSelect = new StringSelectMenuBuilder()
+                    .setCustomId('select_buy_shop_role')
+                    .setPlaceholder('🛒 เลือกยศที่คุณต้องการซื้อที่นี่...');
+
+                let validItemCount = 0;
+
                 if (guildItems.length > 0) {
                     guildItems.forEach((item, idx) => {
-                        itemText += `**${idx + 1}. <@&${item.roleId}>** — 💰 **${item.price}** บาท\n> ${item.description}\n\n`;
-                    });
-                } else {
-                    itemText = 'ยังไม่มีรายการยศในร้านค้า (แอดมินใช้ `/add-shop-item` เพื่อเพิ่มยศ)';
-                }
-                shopEmbed.addFields({ name: '📜 รายการยศที่มีจำหน่าย', value: itemText });
-
-                const components = [];
-
-                if (guildItems.length > 0) {
-                    const shopSelect = new StringSelectMenuBuilder()
-                        .setCustomId('select_buy_shop_role')
-                        .setPlaceholder('🛒 เลือกยศที่ต้องการซื้อที่นี่...');
-
-                    guildItems.forEach(item => {
                         const roleObj = interaction.guild.roles.cache.get(item.roleId);
                         if (roleObj) {
+                            validItemCount++;
+                            itemText += `**${validItemCount}. <@&${item.roleId}>** — 💰 **${item.price}** บาท\n> 📝 ${item.description}\n\n`;
+                            
                             shopSelect.addOptions(
                                 new StringSelectMenuOptionBuilder()
                                     .setLabel(`${roleObj.name} (${item.price} บาท)`)
@@ -531,7 +526,18 @@ client.on('interactionCreate', async (interaction) => {
                             );
                         }
                     });
+                }
 
+                if (validItemCount === 0) {
+                    itemText = '⚠️ ยังไม่มีรายการยศในระบบ (แอดมินต้องใช้ `/add-shop-item` เพื่อใส่ยศเข้าในร้านค้าก่อน)';
+                }
+
+                shopEmbed.addFields({ name: '📜 รายการยศที่มีจำหน่ายอัตโนมัติ', value: itemText });
+
+                const components = [];
+
+                // แสดง Dropdown เลือกซื้อยศเฉพาะเมื่อมียศในร้านค้า
+                if (validItemCount > 0) {
                     components.push(new ActionRowBuilder().addComponents(shopSelect));
                 }
 
@@ -543,7 +549,7 @@ client.on('interactionCreate', async (interaction) => {
                 components.push(btnRow);
 
                 await targetChannel.send({ embeds: [shopEmbed], components }).catch(() => null);
-                return await interaction.editReply({ content: `✅ ส่งข้อความหน้าร้านค้าไปยังห้อง <#${targetChannel.id}> เรียบร้อยแล้ว!` });
+                return await interaction.editReply({ content: `✅ ส่งข้อความหน้าร้านค้าที่มีรายการยศอัตโนมัติ (${validItemCount} รายการ) ไปยังห้อง <#${targetChannel.id}> เรียบร้อยแล้ว!` });
             }
         }
 
@@ -829,7 +835,7 @@ client.on('messageCreate', async (message) => {
             .addFields(
                 { 
                     name: '🛍️ ระบบร้านค้าขายยศ & เติมเงิน (Shop & Topup)', 
-                    value: '• `/setup-shop` : ตั้งค่าห้องและส่งหน้าร้านค้าขายยศ\n• `/add-shop-item` : เพิ่ม/แก้ไข ยศที่ต้องการขายและกำหนดราคา\n• `/setup-shop-logs` : ตั้งค่าห้อง Log เติมเงิน, Log ซื้อขาย และเบอร์ พร้อมเพย์' 
+                    value: '• `/add-shop-item` : เพิ่ม/แก้ไข ยศที่ต้องการขาย ใส่ราคาและคำอธิบาย\n• `/setup-shop` : ส่งหน้าร้านค้าพร้อมดึงยศที่มีทั้งหมดมาโชว์อัตโนมัติ\n• `/setup-shop-logs` : ตั้งค่าห้อง Log เติมเงิน, Log ซื้อขาย และเบอร์ PromptPay' 
                 },
                 { 
                     name: '🎭 ระบบรับยศอัตโนมัติ (Role Systems)', 
