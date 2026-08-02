@@ -34,6 +34,7 @@ const BANNED_ROLE_ID = process.env.BANNED_ROLE_ID;
 
 client.dotRoleConfigs = client.dotRoleConfigs || new Map();
 client.boostConfigs = client.boostConfigs || new Map();
+client.welcomeConfigs = client.welcomeConfigs || new Map();
 
 // 🛠️ ฟังก์ชันแปลงข้อความที่มีตัวแปร {}
 function parseCustomTags(text, guild, member) {
@@ -41,11 +42,15 @@ function parseCustomTags(text, guild, member) {
 
     let parsedText = text;
 
-    if (member) parsedText = parsedText.replace(/\{user\}/g, `<@${member.id}>`);
+    if (member) {
+        parsedText = parsedText.replace(/\{user\}/g, `<@${member.id}>`);
+        parsedText = parsedText.replace(/\{username\}/g, member.user?.username || member.username || 'สมาชิก');
+    }
     if (guild) {
         parsedText = parsedText.replace(/\{guild\}/g, guild.name);
         parsedText = parsedText.replace(/\{boosts\}/g, `${guild.premiumSubscriptionCount || 0}`);
         parsedText = parsedText.replace(/\{level\}/g, `${guild.premiumTier}`);
+        parsedText = parsedText.replace(/\{memberCount\}/g, `${guild.memberCount}`);
     }
 
     parsedText = parsedText.replace(/\{#([^}]+)\}/g, (match, channelName) => {
@@ -131,6 +136,41 @@ const commands = [
     new SlashCommandBuilder()
         .setName('test-boost')
         .setDescription('ทดสอบส่งข้อความแจ้งเตือน Boost จำลองไปยังห้องที่ตั้งค่าไว้')
+        .setDefaultMemberPermissions(PermissionFlagsBits.Administrator),
+
+    // 🌟 --- คำสั่งตั้งค่า Welcome ---
+    new SlashCommandBuilder()
+        .setName('setup-welcome')
+        .setDescription('ตั้งค่าระบบต้อนรับสมาชิกใหม่ (Welcome)')
+        .setDefaultMemberPermissions(PermissionFlagsBits.Administrator)
+        .addChannelOption(option =>
+            option.setName('channel')
+                .setDescription('เลือกห้องสำหรับส่งข้อความต้อนรับ')
+                .setRequired(true))
+        .addStringOption(option =>
+            option.setName('title')
+                .setDescription('หัวข้อ Embed (ใช้ {user}, {guild}, {username} ได้)')
+                .setRequired(false))
+        .addStringOption(option =>
+            option.setName('description')
+                .setDescription('ข้อความ Embed (ใช้ {user}, {guild}, {memberCount}, {#ห้อง}, {@ยศ} ได้)')
+                .setRequired(false))
+        .addStringOption(option =>
+            option.setName('content_message')
+                .setDescription('ข้อความข้อความนอก Embed (เช่น แท็กคน {user})')
+                .setRequired(false))
+        .addStringOption(option =>
+            option.setName('banner_url')
+                .setDescription('ลิงก์รูปภาพ Banner ด้านล่าง Embed')
+                .setRequired(false))
+        .addStringOption(option =>
+            option.setName('color')
+                .setDescription('โค้ดสี HEX เช่น #5865F2 หรือ GREEN')
+                .setRequired(false)),
+
+    new SlashCommandBuilder()
+        .setName('test-welcome')
+        .setDescription('ทดสอบส่งข้อความต้อนรับสมาชิกใหม่จำลอง')
         .setDefaultMemberPermissions(PermissionFlagsBits.Administrator),
 
     new SlashCommandBuilder()
@@ -291,6 +331,80 @@ client.on('interactionCreate', async (interaction) => {
 
                 return await interaction.editReply({ 
                     content: `✅ ส่งข้อความทดสอบระบบ Boost ไปที่ห้อง <#${targetChan.id}> เรียบร้อยแล้วครับ!`
+                });
+            }
+
+            // 🌟 --- ตั้งค่าระบบ Welcome ---
+            if (interaction.commandName === 'setup-welcome') {
+                await interaction.deferReply({ ephemeral: true });
+
+                const targetChannel = interaction.options.getChannel('channel');
+                const title = interaction.options.getString('title') || '🎉 ยินดีต้อนรับสู่ {guild}!';
+                const description = interaction.options.getString('description') || '👋 ยินดีต้อนรับคุณ {user} เข้าสู่เซิร์ฟเวอร์ **{guild}** ครับ!\n\nขณะนี้เซิร์ฟเวอร์ของเรามีสมาชิกทั้งหมด **{memberCount}** คนแล้ว ✨\nขอให้สนุกกับการอยู่ร่วมกันนะครับ!';
+                const contentMessage = interaction.options.getString('content_message') || '✨ ยินดีต้อนรับ {user} สู่เซิร์ฟเวอร์ของเรา!';
+                const bannerUrl = interaction.options.getString('banner_url') || null;
+                const color = interaction.options.getString('color') || '#5865F2';
+
+                client.welcomeConfigs.set(interaction.guild.id, {
+                    channelId: targetChannel.id,
+                    title,
+                    description,
+                    contentMessage,
+                    bannerUrl,
+                    color
+                });
+
+                const resultEmbed = new EmbedBuilder()
+                    .setTitle('⚙️ ตั้งค่าระบบต้อนรับ (Welcome) เรียบร้อย!')
+                    .setColor(0x2ECC71)
+                    .setDescription(`ตั้งค่าห้องต้อนรับไปที่ <#${targetChannel.id}> เรียบร้อยครับ!\n\n💡 **พิมพ์ `/test-welcome` เพื่อทดสอบข้อความต้อนรับได้ทันที!**`)
+                    .setTimestamp();
+
+                return await interaction.editReply({ embeds: [resultEmbed] });
+            }
+
+            // 🧪 --- ระบบทดสอบ Welcome จำลอง ---
+            if (interaction.commandName === 'test-welcome') {
+                await interaction.deferReply({ ephemeral: true });
+
+                const welcomeConfig = client.welcomeConfigs.get(interaction.guild.id) || {
+                    channelId: interaction.channel.id,
+                    title: '🎉 ยินดีต้อนรับสู่ {guild}!',
+                    description: '👋 ยินดีต้อนรับคุณ {user} เข้าสู่เซิร์ฟเวอร์ **{guild}** ครับ!\n\nขณะนี้เซิร์ฟเวอร์ของเรามีสมาชิกทั้งหมด **{memberCount}** คนแล้ว ✨\nขอให้สนุกกับการอยู่ร่วมกันนะครับ!',
+                    contentMessage: '✨ ยินดีต้อนรับ {user} สู่เซิร์ฟเวอร์ของเรา!',
+                    bannerUrl: null,
+                    color: '#5865F2'
+                };
+
+                const targetChan = interaction.guild.channels.cache.get(welcomeConfig.channelId) || interaction.channel;
+
+                const formattedTitle = parseCustomTags(welcomeConfig.title, interaction.guild, interaction.member);
+                const formattedDesc = parseCustomTags(welcomeConfig.description, interaction.guild, interaction.member);
+                const formattedContent = parseCustomTags(welcomeConfig.contentMessage, interaction.guild, interaction.member);
+
+                const testEmbed = new EmbedBuilder()
+                    .setTitle(formattedTitle)
+                    .setColor(welcomeConfig.color || '#5865F2')
+                    .setDescription(formattedDesc)
+                    .addFields(
+                        { name: '👤 สมาชิกใหม่', value: `<@${interaction.user.id}>`, inline: true },
+                        { name: '📊 ลำดับสมาชิก', value: `คนที่ \`${interaction.guild.memberCount}\``, inline: true }
+                    )
+                    .setThumbnail(interaction.user.displayAvatarURL({ dynamic: true }))
+                    .setFooter({ text: `${interaction.guild.name} • (ทดสอบระบบ Welcome) 🎉` })
+                    .setTimestamp();
+
+                if (welcomeConfig.bannerUrl && welcomeConfig.bannerUrl.startsWith('http')) {
+                    testEmbed.setImage(welcomeConfig.bannerUrl);
+                }
+
+                await targetChan.send({
+                    content: `⚠️ **[ข้อความทดสอบระบบ WELCOME]**\n${formattedContent}`,
+                    embeds: [testEmbed]
+                }).catch(() => null);
+
+                return await interaction.editReply({ 
+                    content: `✅ ส่งข้อความทดสอบระบบ Welcome ไปที่ห้อง <#${targetChan.id}> เรียบร้อยแล้วครับ!`
                 });
             }
 
@@ -615,6 +729,57 @@ client.on('interactionCreate', async (interaction) => {
         }
     } catch (err) {
         console.error('Interaction Exception:', err);
+    }
+});
+
+// --------------------------------------------------
+// 🌟 ระบบตรวจจับสมาชิกใหม่เข้าดิส (WELCOME AUTOMATION)
+// --------------------------------------------------
+client.on('guildMemberAdd', async (member) => {
+    try {
+        const welcomeConfig = client.welcomeConfigs.get(member.guild.id) || {
+            channelId: process.env.WELCOME_CHANNEL_ID,
+            title: '🎉 ยินดีต้อนรับสู่ {guild}!',
+            description: '👋 ยินดีต้อนรับคุณ {user} เข้าสู่เซิร์ฟเวอร์ **{guild}** ครับ!\n\nขณะนี้เซิร์ฟเวอร์ของเรามีสมาชิกทั้งหมด **{memberCount}** คนแล้ว ✨\nขอให้สนุกกับการอยู่ร่วมกันนะครับ!',
+            contentMessage: '✨ ยินดีต้อนรับ {user} สู่เซิร์ฟเวอร์ของเรา!',
+            bannerUrl: null,
+            color: '#5865F2'
+        };
+
+        if (!welcomeConfig.channelId) return;
+
+        const welcomeChannel = member.guild.channels.cache.get(welcomeConfig.channelId);
+        if (!welcomeChannel) return;
+
+        const guild = member.guild;
+
+        const formattedTitle = parseCustomTags(welcomeConfig.title, guild, member);
+        const formattedDesc = parseCustomTags(welcomeConfig.description, guild, member);
+        const formattedContent = parseCustomTags(welcomeConfig.contentMessage, guild, member);
+
+        const welcomeEmbed = new EmbedBuilder()
+            .setTitle(formattedTitle)
+            .setColor(welcomeConfig.color || '#5865F2')
+            .setDescription(formattedDesc)
+            .addFields(
+                { name: '👤 สมาชิกใหม่', value: `<@${member.id}>`, inline: true },
+                { name: '📊 ลำดับสมาชิก', value: `คนที่ \`${guild.memberCount}\``, inline: true }
+            )
+            .setThumbnail(member.user.displayAvatarURL({ dynamic: true }))
+            .setFooter({ text: `${guild.name} • ยินดีต้อนรับนะ 🎉` })
+            .setTimestamp();
+
+        if (welcomeConfig.bannerUrl && welcomeConfig.bannerUrl.startsWith('http')) {
+            welcomeEmbed.setImage(welcomeConfig.bannerUrl);
+        }
+
+        await welcomeChannel.send({
+            content: formattedContent,
+            embeds: [welcomeEmbed]
+        }).catch(err => console.error('ส่งข้อความ Welcome ล้มเหลว:', err));
+
+    } catch (error) {
+        console.error('❌ Error in guildMemberAdd:', error);
     }
 });
 
