@@ -197,8 +197,6 @@ client.on('interactionCreate', async (interaction) => {
         if (interaction.isChatInputCommand()) {
 
             if (interaction.commandName === 'setup-dot-role') {
-                await interaction.deferReply({ ephemeral: true });
-
                 const targetChannel = interaction.options.getChannel('channel');
                 const targetRole = interaction.options.getRole('role');
                 const bannerUrl = interaction.options.getString('banner_url') || null;
@@ -216,13 +214,11 @@ client.on('interactionCreate', async (interaction) => {
                     .setDescription(`ตั้งค่าการรับยศ **${targetRole.name}** ในห้อง <#${targetChannel.id}> เรียบร้อยครับ!`)
                     .setTimestamp();
 
-                return await interaction.editReply({ embeds: [embed] });
+                return await interaction.reply({ embeds: [embed], ephemeral: true });
             }
 
-            // 🚀 --- ตั้งค่าระบบขอบคุณคน Boost (แก้ไขไม่ให้แอปพลิเคชันไม่ตอบสนอง) ---
+            // 🚀 --- ตั้งค่าระบบขอบคุณคน Boost (ตอบสนองทันที Fast Response) ---
             if (interaction.commandName === 'setup-boost') {
-                await interaction.deferReply({ ephemeral: true });
-
                 const targetChannel = interaction.options.getChannel('channel');
                 const title = interaction.options.getString('title') || '🚀 ขอบคุณสำหรับการ Server Boost!';
                 const description = interaction.options.getString('description') || '💖 ขอบคุณคุณ {user} มากๆ นะครับที่ช่วยสนับสนุนเซิร์ฟเวอร์ **{guild}**!\n\nแวะไปพูดคุยกับเพื่อนๆ ได้ที่ห้อง {#พูดคุย-ทั่วไป} หรือดูสิทธิ์พิเศษที่ยศ {@Booster} ได้เลย!';
@@ -245,13 +241,11 @@ client.on('interactionCreate', async (interaction) => {
                     .setDescription(`ตั้งค่าการแจ้งเตือนไว้ที่ห้อง <#${targetChannel.id}> เรียบร้อยครับ!\n\n💡 **คุณสามารถพิมพ์ `/test-boost` เพื่อทดสอบระบบได้ทันที!**`)
                     .setTimestamp();
 
-                return await interaction.editReply({ embeds: [previewEmbed] });
+                return await interaction.reply({ embeds: [previewEmbed], ephemeral: true });
             }
 
-            // 🧪 --- ระบบทดสอบ Boost จำลอง ---
+            // 🧪 --- ระบบทดสอบ Boost จำลอง (ตอบสนองทันที Fast Response) ---
             if (interaction.commandName === 'test-boost') {
-                await interaction.deferReply({ ephemeral: true });
-
                 const boostConfig = client.boostConfigs.get(interaction.guild.id) || {
                     channelId: interaction.channel.id,
                     title: '🚀 ขอบคุณสำหรับการ Server Boost!',
@@ -284,13 +278,16 @@ client.on('interactionCreate', async (interaction) => {
                     testEmbed.setImage(boostConfig.bannerUrl);
                 }
 
-                await targetChan.send({
+                // ส่งเข้าห้องเป้าหมายในเบื้องหลัง
+                targetChan.send({
                     content: `⚠️ **[ข้อความทดสอบระบบ BOOST]**\n${formattedContent}`,
                     embeds: [testEmbed]
-                });
+                }).catch(() => null);
 
-                return await interaction.editReply({ 
-                    content: `✅ ส่งข้อความทดสอบระบบ Boost ไปที่ห้อง <#${targetChan.id}> เรียบร้อยแล้วครับ!`
+                // ตอบกลับผู้ใช้ทันทีโดยไม่รอ
+                return await interaction.reply({ 
+                    content: `✅ ส่งข้อความทดสอบระบบ Boost ไปที่ห้อง <#${targetChan.id}> เรียบร้อยแล้วครับ!`,
+                    ephemeral: true
                 });
             }
 
@@ -310,8 +307,6 @@ client.on('interactionCreate', async (interaction) => {
             }
 
             if (interaction.commandName === 'setup_dropdown') {
-                await interaction.deferReply({ ephemeral: true });
-
                 const messageId = interaction.options.getString('message_id').trim();
                 const placeholder = interaction.options.getString('placeholder');
                 const imageUrl = interaction.options.getString('image_url').trim();
@@ -322,77 +317,60 @@ client.on('interactionCreate', async (interaction) => {
                     if (role) roles.push(role);
                 }
 
-                try {
-                    let targetMessage = await interaction.channel.messages.fetch(messageId).catch(() => null);
+                let targetMessage = interaction.channel.messages.cache.get(messageId);
 
-                    if (!targetMessage) {
-                        const channels = await interaction.guild.channels.fetch();
-                        const textChannels = channels.filter(c => c && c.isTextBased() && c.viewable);
+                if (!targetMessage) {
+                    await interaction.deferReply({ ephemeral: true });
+                    targetMessage = await interaction.channel.messages.fetch(messageId).catch(() => null);
+                }
 
-                        for (const [_, ch] of textChannels) {
-                            try {
-                                const msg = await ch.messages.fetch(messageId).catch(() => null);
-                                if (msg) {
-                                    targetMessage = msg;
-                                    break;
-                                }
-                            } catch (e) {
-                                continue;
-                            }
-                        }
-                    }
+                if (!targetMessage) {
+                    const msg = '❌ หาข้อความไม่พบ! กรุณาตรวจสอบ ID ข้อความอีกครั้ง';
+                    return interaction.deferred ? await interaction.editReply({ content: msg }) : await interaction.reply({ content: msg, ephemeral: true });
+                }
 
-                    if (!targetMessage) {
-                        return await interaction.editReply({ content: '❌ หาข้อความไม่พบ! กรุณาตรวจสอบ ID ข้อความอีกครั้ง' });
-                    }
+                const selectMenu = new StringSelectMenuBuilder()
+                    .setCustomId('select_dynamic_roles')
+                    .setPlaceholder(placeholder)
+                    .setMinValues(0)
+                    .setMaxValues(roles.length)
+                    .addOptions(
+                        roles.map(role => 
+                            new StringSelectMenuOptionBuilder()
+                                .setLabel(role.name)
+                                .setValue(role.id)
+                        )
+                    );
 
-                    const selectMenu = new StringSelectMenuBuilder()
-                        .setCustomId('select_dynamic_roles')
-                        .setPlaceholder(placeholder)
-                        .setMinValues(0)
-                        .setMaxValues(roles.length)
-                        .addOptions(
-                            roles.map(role => 
-                                new StringSelectMenuOptionBuilder()
-                                    .setLabel(role.name)
-                                    .setValue(role.id)
-                            )
-                        );
+                const row = new ActionRowBuilder().addComponents(selectMenu);
 
-                    const row = new ActionRowBuilder().addComponents(selectMenu);
-
-                    let embedsToUse = [...(targetMessage.embeds || [])];
-                    if (imageUrl && imageUrl.startsWith('http')) {
-                        if (embedsToUse.length > 0) {
-                            const newEmbed = EmbedBuilder.from(embedsToUse[0]).setImage(imageUrl);
-                            embedsToUse[0] = newEmbed;
-                        } else {
-                            const newEmbed = new EmbedBuilder().setImage(imageUrl);
-                            embedsToUse.push(newEmbed);
-                        }
-                    }
-
-                    if (targetMessage.author.id === client.user.id) {
-                        await targetMessage.edit({ embeds: embedsToUse, components: [row] });
-                        return await interaction.editReply({ content: `✅ แก้ไขข้อความและอัปเดตรูปภาพเรียบร้อย!` });
+                let embedsToUse = [...(targetMessage.embeds || [])];
+                if (imageUrl && imageUrl.startsWith('http')) {
+                    if (embedsToUse.length > 0) {
+                        const newEmbed = EmbedBuilder.from(embedsToUse[0]).setImage(imageUrl);
+                        embedsToUse[0] = newEmbed;
                     } else {
-                        const payload = {
-                            content: targetMessage.content || null,
-                            embeds: embedsToUse,
-                            files: Array.from(targetMessage.attachments.values()),
-                            components: [row]
-                        };
-
-                        await targetMessage.channel.send(payload);
-
-                        return await interaction.editReply({ 
-                            content: `✅ บอทได้ทำการสร้างข้อความใหม่พร้อมแนบ Dropdown ในห้อง <#${targetMessage.channel.id}> เรียบร้อย!` 
-                        });
+                        const newEmbed = new EmbedBuilder().setImage(imageUrl);
+                        embedsToUse.push(newEmbed);
                     }
+                }
 
-                } catch (err) {
-                    console.error(err);
-                    return await interaction.editReply({ content: '❌ เกิดข้อผิดพลาดในการประมวลผลข้อความ' });
+                if (targetMessage.author.id === client.user.id) {
+                    await targetMessage.edit({ embeds: embedsToUse, components: [row] });
+                    const resContent = `✅ แก้ไขข้อความและอัปเดตรูปภาพเรียบร้อย!`;
+                    return interaction.deferred ? await interaction.editReply({ content: resContent }) : await interaction.reply({ content: resContent, ephemeral: true });
+                } else {
+                    const payload = {
+                        content: targetMessage.content || null,
+                        embeds: embedsToUse,
+                        files: Array.from(targetMessage.attachments.values()),
+                        components: [row]
+                    };
+
+                    await targetMessage.channel.send(payload);
+
+                    const resContent = `✅ บอทได้ทำการสร้างข้อความใหม่พร้อมแนบ Dropdown ในห้อง <#${targetMessage.channel.id}> เรียบร้อย!`;
+                    return interaction.deferred ? await interaction.editReply({ content: resContent }) : await interaction.reply({ content: resContent, ephemeral: true });
                 }
             }
         }
@@ -601,8 +579,6 @@ client.on('interactionCreate', async (interaction) => {
             }
 
             if (interaction.customId === 'select_dynamic_roles') {
-                await interaction.deferReply({ ephemeral: true });
-
                 const selectedRoleIds = interaction.values;
                 const member = interaction.member;
                 const allMenuRoleIds = interaction.component.options.map(opt => opt.value);
@@ -620,10 +596,10 @@ client.on('interactionCreate', async (interaction) => {
                         }
                     }
 
-                    return await interaction.editReply({ content: '✅ อัปเดตยศของคุณเรียบร้อยแล้ว!' });
+                    return await interaction.reply({ content: '✅ อัปเดตยศของคุณเรียบร้อยแล้ว!', ephemeral: true });
                 } catch (error) {
                     console.error(error);
-                    return await interaction.editReply({ content: '❌ เกิดข้อผิดพลาดในการปรับเปลี่ยนยศ' });
+                    return await interaction.reply({ content: '❌ เกิดข้อผิดพลาดในการปรับเปลี่ยนยศ', ephemeral: true });
                 }
             }
         }
