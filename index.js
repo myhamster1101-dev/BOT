@@ -33,11 +33,9 @@ const REPORT_LOG_CHANNEL_ID = process.env.REPORT_LOG_CHANNEL_ID;
 const BAN_LOG_CHANNEL_ID = process.env.BAN_LOG_CHANNEL_ID;
 const BANNED_ROLE_ID = process.env.BANNED_ROLE_ID;
 
-// 🚀 ID ห้องสำหรับแจ้งเตือนขอบคุณคน Boost
-const BOOST_LOG_CHANNEL_ID = process.env.BOOST_LOG_CHANNEL_ID;
-
-// ตัวแปรเก็บการตั้งค่าระบบพิมพ์จุด (เก็บ Map ข้อมูลห้อง ยศ และรูปแบบ Embed)
+// ตัวแปรเก็บ Map การตั้งค่าต่างๆ
 client.dotRoleConfigs = client.dotRoleConfigs || new Map();
+client.boostConfigs = client.boostConfigs || new Map(); // เก็บตั้งค่า Embed ตกแต่งระบบ Boost
 
 // 1. Slash Commands Definition
 const commands = [
@@ -75,6 +73,32 @@ const commands = [
         .addStringOption(option =>
             option.setName('color')
                 .setDescription('โค้ดสี HEX เช่น #2ECC71 หรือ GREEN')
+                .setRequired(false)),
+
+    // 🚀 เพิ่มคำสั่งตั้งค่า Embed ขอบคุณคน Boost แบบกำหนดเองได้ทั้งหมด
+    new SlashCommandBuilder()
+        .setName('setup-boost')
+        .setDescription('ตั้งค่าและตกแต่งข้อความแจ้งเตือนเมื่อมีคน Boost เซิร์ฟเวอร์')
+        .setDefaultMemberPermissions(PermissionFlagsBits.Administrator)
+        .addChannelOption(option =>
+            option.setName('channel')
+                .setDescription('เลือกห้องที่ต้องการให้ส่งข้อความขอบคุณคน Boost')
+                .setRequired(true))
+        .addStringOption(option =>
+            option.setName('title')
+                .setDescription('หัวข้อ Embed (เช่น: 🚀 ขอบคุณสำหรับการ Boost!)')
+                .setRequired(false))
+        .addStringOption(option =>
+            option.setName('description')
+                .setDescription('เนื้อหา (ใช้ {user} แทนแท็กคนบูสต์, {guild} แทนชื่อเซิร์ฟ)')
+                .setRequired(false))
+        .addStringOption(option =>
+            option.setName('banner_url')
+                .setDescription('ลิงก์รูปภาพ Banner ด้านล่าง Embed')
+                .setRequired(false))
+        .addStringOption(option =>
+            option.setName('color')
+                .setDescription('โค้ดสี HEX เช่น #F47FFF หรือ PINK')
                 .setRequired(false)),
 
     new SlashCommandBuilder()
@@ -139,13 +163,14 @@ function createSetupModal(customId, title, defaultTitle, defaultDesc, defaultBtn
 client.on('interactionCreate', async (interaction) => {
     try {
         if (interaction.isChatInputCommand()) {
+
+            // --- ตั้งค่าระบบพิมพ์จุดรับยศ ---
             if (interaction.commandName === 'setup-dot-role') {
                 const targetChannel = interaction.options.getChannel('channel');
                 const targetRole = interaction.options.getRole('role');
                 const bannerUrl = interaction.options.getString('banner_url') || null;
                 const colorHex = interaction.options.getString('color') || '#2ECC71';
 
-                // บันทึกการตั้งค่าลง Map
                 client.dotRoleConfigs.set(targetChannel.id, {
                     roleId: targetRole.id,
                     bannerUrl: (bannerUrl && bannerUrl !== '-') ? bannerUrl : null,
@@ -155,10 +180,39 @@ client.on('interactionCreate', async (interaction) => {
                 const embed = new EmbedBuilder()
                     .setTitle('⚙️ ตั้งค่าระบบพิมพ์จุดรับยศสำเร็จ!')
                     .setColor(0x2ECC71)
-                    .setDescription(`เมื่อมีสมาชิกพิมพ์จุด \`.\` ในห้อง <#${targetChannel.id}> \n- บอทจะทำการกด **✅ ถาวร** บนข้อความ\n- มอบยศ **${targetRole.name}**\n- ส่งข้อความต้อนรับในรูปแบบ Embed สวยงาม`)
+                    .setDescription(`เมื่อมีสมาชิกพิมพ์จุด \`.\` ในห้อง <#${targetChannel.id}> \n- บอทจะทำการกด **✅ ถาวร** บนข้อความ\n- มอบยศ **${targetRole.name}**\n- ส่งข้อความ Embed ตอบกลับสุดเท่!`)
                     .setTimestamp();
 
                 return await interaction.reply({ embeds: [embed], ephemeral: true });
+            }
+
+            // 🚀 --- ตั้งค่าระบบขอบคุณคน Boost (ปรับแต่งได้เต็มที่) ---
+            if (interaction.commandName === 'setup-boost') {
+                const targetChannel = interaction.options.getChannel('channel');
+                const title = interaction.options.getString('title') || '🚀 ขอบคุณสำหรับการ Server Boost!';
+                const description = interaction.options.getString('description') || '💖 ขอบคุณคุณ {user} มากๆ นะครับที่ช่วยสนับสนุนเซิร์ฟเวอร์ **{guild}** ของพวกเรา!\n\nการสนับสนุนของคุณมีความหมายกับพวกเรามากเลยครับ! ✨';
+                const bannerUrl = interaction.options.getString('banner_url') || null;
+                const color = interaction.options.getString('color') || '#F47FFF';
+
+                client.boostConfigs.set(interaction.guild.id, {
+                    channelId: targetChannel.id,
+                    title,
+                    description,
+                    bannerUrl,
+                    color
+                });
+
+                const previewEmbed = new EmbedBuilder()
+                    .setTitle('⚙️ ตั้งค่าระบบแจ้งเตือน Boost เรียบร้อย!')
+                    .setColor(0x2ECC71)
+                    .setDescription(`ระบบจะส่งข้อความแจ้งเตือนไปที่ห้อง <#${targetChannel.id}> เมื่อมีคน Boost เซิร์ฟเวอร์ครับ!`)
+                    .addFields(
+                        { name: '📌 หัวข้อตั้งไว้', value: title, inline: false },
+                        { name: '📝 ข้อความตั้งไว้', value: description, inline: false }
+                    )
+                    .setTimestamp();
+
+                return await interaction.reply({ embeds: [previewEmbed], ephemeral: true });
             }
 
             if (interaction.commandName === 'setup-ticket') {
@@ -501,30 +555,51 @@ client.on('interactionCreate', async (interaction) => {
 });
 
 // --------------------------------------------------
-// 🚀 ระบบตรวจจับการ Server Boost (ส่งข้อความขอบคุณ)
+// 🚀 ระบบตรวจจับการ Server Boost (ข้อความตกแต่งได้หมด)
 // --------------------------------------------------
 client.on('guildMemberUpdate', async (oldMember, newMember) => {
     const oldBoost = oldMember.premiumSince;
     const newBoost = newMember.premiumSince;
 
+    // ตรวจจับเมื่อมีคนกด Boost เซิร์ฟเวอร์
     if (!oldBoost && newBoost) {
-        const boostChannel = newMember.guild.channels.cache.get(BOOST_LOG_CHANNEL_ID);
+        // ดึงการตั้งค่าจากคำสั่ง /setup-boost (ถ้าไม่มีจะใช้ค่าเริ่มต้น)
+        const boostConfig = client.boostConfigs.get(newMember.guild.id) || {
+            channelId: process.env.BOOST_LOG_CHANNEL_ID,
+            title: '🚀 ขอบคุณสำหรับการ Server Boost!',
+            description: '💖 ขอบคุณคุณ {user} มากๆ นะครับที่ช่วยสนับสนุนเซิร์ฟเวอร์ **{guild}** ของพวกเรา!\n\nการสนับสนุนของคุณมีความหมายกับพวกเรามากเลยครับ! ✨',
+            bannerUrl: null,
+            color: '#F47FFF'
+        };
+
+        if (!boostConfig.channelId) return;
+
+        const boostChannel = newMember.guild.channels.cache.get(boostConfig.channelId);
         if (!boostChannel) return;
 
         const totalBoosts = newMember.guild.premiumSubscriptionCount || 0;
         const boostLevel = newMember.guild.premiumTier;
 
+        // แทนที่ตัวแปร {user} และ {guild}
+        const formattedDesc = boostConfig.description
+            .replace(/\{user\}/g, `<@${newMember.id}>`)
+            .replace(/\{guild\}/g, newMember.guild.name);
+
         const boostEmbed = new EmbedBuilder()
-            .setTitle('🚀 ขอบคุณสำหรับการ Server Boost!')
-            .setColor(0xF47FFF)
-            .setDescription(`💖 ขอบคุณคุณ <@${newMember.id}> มากๆ นะครับที่ช่วยสนับสนุนเซิร์ฟเวอร์ **${newMember.guild.name}** ของพวกเรา!\n\nการสนับสนุนของคุณมีความหมายกับพวกเรามากเลยครับ! ✨`)
+            .setTitle(boostConfig.title)
+            .setColor(boostConfig.color || '#F47FFF')
+            .setDescription(formattedDesc)
             .addFields(
                 { name: '💎 ยอด Boost รวมในเซิร์ฟเวอร์', value: `\`${totalBoosts}\` บูสต์`, inline: true },
                 { name: '⭐ Server Level', value: `\`Level ${boostLevel}\``, inline: true }
             )
             .setThumbnail(newMember.user.displayAvatarURL({ dynamic: true }))
-            .setFooter({ text: 'ขอบคุณที่ร่วมเป็นส่วนหนึ่งในการพัฒนาเซิร์ฟเวอร์ครับ 💖' })
+            .setFooter({ text: `${newMember.guild.name} • ขอบคุณสำหรับการสนับสนุน 💖` })
             .setTimestamp();
+
+        if (boostConfig.bannerUrl && boostConfig.bannerUrl.startsWith('http')) {
+            boostEmbed.setImage(boostConfig.bannerUrl);
+        }
 
         await boostChannel.send({
             content: `🎉 **NEW BOOST!** ขอบคุณ <@${newMember.id}> มากครับ! 🚀✨`,
@@ -534,7 +609,7 @@ client.on('guildMemberUpdate', async (oldMember, newMember) => {
 });
 
 // --------------------------------------------------
-// 🔴 ระบบพิมพ์จุด (.) รับยศ (+แปะอิโมจิ ✅ ถาวร + ตอบกลับ EMBED สวยงาม)
+// 🔴 ระบบพิมพ์จุด (.) รับยศ (+แปะอิโมจิ ✅ ถาวร + ตอบกลับ EMBED)
 // --------------------------------------------------
 client.on('messageCreate', async (message) => {
     if (message.author.bot || !message.guild) return;
@@ -556,7 +631,6 @@ client.on('messageCreate', async (message) => {
                         content: `⚠️ <@${message.author.id}> คุณมียศ **${role.name}** อยู่แล้วครับ!`
                     });
                     
-                    // แจ้งเตือนมียศอยู่แล้วค่อยลบเพื่อไม่ให้ห้องรก
                     setTimeout(() => {
                         warnMsg.delete().catch(() => null);
                     }, 4000);
@@ -566,10 +640,10 @@ client.on('messageCreate', async (message) => {
                 // 2. มอบยศให้สมาชิก
                 await message.member.roles.add(role);
 
-                // 🟢 3. กดแสดงความยินดีใส่อิโมจิติ๊กถูก ✅ บนข้อความจุด (ถาวร! ไม่ลบออก)
+                // 🟢 3. กดแสดงความยินดีใส่อิโมจิติ๊กถูก ✅ บนข้อความจุด (ถาวร)
                 await message.react('✅').catch(() => null);
 
-                // 🎨 4. ปรับแต่ง EMBED ต้อนรับอย่างสวยงาม
+                // 🎨 4. ปรับแต่ง EMBED ตอบกลับ
                 const embedColor = config.color || '#2ECC71';
                 const welcomeEmbed = new EmbedBuilder()
                     .setTitle('🎉 ยินดีต้อนรับสมาชิกใหม่!')
@@ -586,12 +660,11 @@ client.on('messageCreate', async (message) => {
                     })
                     .setTimestamp();
 
-                // ใส่ รูป Banner (ถ้ามี)
                 if (config.bannerUrl) {
                     welcomeEmbed.setImage(config.bannerUrl);
                 }
 
-                // 5. ส่งข้อความ EMBED ตอบกลับ (และปล่อยไว้สวยๆ ถาวร)
+                // 5. ส่งข้อความ EMBED ถาวร
                 await message.channel.send({
                     content: `✨ <@${message.author.id}> ได้รับยศเรียบร้อยแล้ว!`,
                     embeds: [welcomeEmbed]
