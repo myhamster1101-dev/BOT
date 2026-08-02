@@ -32,10 +32,10 @@ const CLIENT_ID = process.env.CLIENT_ID;
 client.dotRoleConfigs = client.dotRoleConfigs || new Map();
 client.boostConfigs = client.boostConfigs || new Map();
 client.welcomeConfigs = client.welcomeConfigs || new Map();
-client.userBalances = client.userBalances || new Map();     // เก็บยอดเงินสมาชิก { userId: balance }
-client.shopItems = client.shopItems || new Map();           // เก็บสินค้ายศ { guildId: [{ roleId, price, description }] }
-client.shopLogsConfig = client.shopLogsConfig || new Map(); // เก็บห้อง Logs { topupLogId, shopLogId, promptpayInfo }
-client.shopMessageConfigs = client.shopMessageConfigs || new Map(); // ⚡ เก็บข้อมูลตำแหน่งหน้าร้านค้า { guildId: { channelId, messageId, title, description, bannerUrl, color } }
+client.userBalances = client.userBalances || new Map();         // เก็บยอดเงินสมาชิก { userId: balance }
+client.shopItems = client.shopItems || new Map();               // เก็บสินค้ายศ { guildId: [{ roleId, price, description }] }
+client.shopLogsConfig = client.shopLogsConfig || new Map();     // เก็บข้อมูลบัญชีและ Logs { topupLogId, shopLogId, accountName, truewallet, promptpay, qrCodeUrl }
+client.shopMessageConfigs = client.shopMessageConfigs || new Map(); // เก็บข้อมูลตำแหน่งหน้าร้านค้า { guildId: { channelId, messageId, title, description, bannerUrl, color } }
 
 // 🛠️ ฟังก์ชันแปลงข้อความที่มีตัวแปร Tag
 function parseCustomTags(text, guild, member) {
@@ -231,7 +231,6 @@ const commands = [
         .addStringOption(opt => opt.setName('emoji3').setDescription('Emoji ปุ่ม 3').setRequired(false))
         .addStringOption(opt => opt.setName('image_url').setDescription('ลิงก์รูปภาพ Banner').setRequired(false)),
 
-    // --- ระบบ Dropdown เลือกยศไม่จำกัด ---
     new SlashCommandBuilder()
         .setName('setup_dropdown')
         .setDescription('เพิ่ม Dropdown เลือกยศแบบไม่จำกัดใส่ข้อความเดิม')
@@ -252,11 +251,14 @@ const commands = [
 
     new SlashCommandBuilder()
         .setName('setup-shop-logs')
-        .setDescription('ตั้งค่าห้องประวัติการเติมเงิน/ซื้อขาย และเบอร์ PromptPay')
+        .setDescription('ตั้งค่าห้อง Logs, ข้อมูลบัญชี True Wallet, PromptPay และรูป QR Code')
         .setDefaultMemberPermissions(PermissionFlagsBits.Administrator)
         .addChannelOption(opt => opt.setName('topup_log').setDescription('ห้องแจ้งเตือนประวัติเติมเงิน/แนบสลิป').setRequired(true))
         .addChannelOption(opt => opt.setName('shop_log').setDescription('ห้องแจ้งเตือนประวัติซื้อขายยศ').setRequired(true))
-        .addStringOption(opt => opt.setName('promptpay').setDescription('เบอร์ พร้อมเพย์ / เลขบัญชี สำหรับรับโอนเงิน').setRequired(false)),
+        .addStringOption(opt => opt.setName('account_name').setDescription('ชื่อบัญชีผู้รับเงิน (เช่น นาย สมชาย ใจดี)').setRequired(false))
+        .addStringOption(opt => opt.setName('truewallet').setDescription('เบอร์ TrueMoney Wallet').setRequired(false))
+        .addStringOption(opt => opt.setName('promptpay').setDescription('เบอร์ พร้อมเพย์ / เลขบัญชีธนาคาร').setRequired(false))
+        .addStringOption(opt => opt.setName('qr_code_url').setDescription('ลิงก์รูปภาพ QR Code พร้อมเพย์').setRequired(false)),
 
     new SlashCommandBuilder()
         .setName('setup-shop')
@@ -544,15 +546,29 @@ client.on('interactionCreate', async (interaction) => {
                 await interaction.deferReply({ ephemeral: true });
                 const topupLog = interaction.options.getChannel('topup_log');
                 const shopLog = interaction.options.getChannel('shop_log');
+                const accountName = interaction.options.getString('account_name') || 'ไม่ระบุชื่อบัญชี';
+                const truewallet = interaction.options.getString('truewallet') || 'ไม่ระบุ';
                 const promptpay = interaction.options.getString('promptpay') || 'ไม่ระบุ';
+                const qrCodeUrl = interaction.options.getString('qr_code_url') || null;
 
                 client.shopLogsConfig.set(interaction.guild.id, {
                     topupLogId: topupLog.id,
                     shopLogId: shopLog.id,
-                    promptpay
+                    accountName,
+                    truewallet,
+                    promptpay,
+                    qrCodeUrl
                 });
 
-                return await interaction.editReply({ content: `✅ ตั้งค่าห้อง Log เติมเงิน (<#${topupLog.id}>) และ Log ซื้อขาย (<#${shopLog.id}>) เรียบร้อยแล้ว!` });
+                return await interaction.editReply({ 
+                    content: `✅ **ตั้งค่าระบบรับเงินและบันทึก Logs สำเร็จ!**\n\n` +
+                             `• **ชื่อบัญชีรับเงิน:** \`${accountName}\`\n` +
+                             `• **TrueMoney Wallet:** \`${truewallet}\`\n` +
+                             `• **PromptPay / เลขบัญชี:** \`${promptpay}\`\n` +
+                             `• **รูป QR Code:** ${qrCodeUrl ? '`ตั้งค่าไว้แล้ว`' : '`ไม่ได้แนบ`'}\n` +
+                             `• **ห้อง Log เติมเงิน:** <#${topupLog.id}>\n` +
+                             `• **ห้อง Log ซื้อขาย:** <#${shopLog.id}>` 
+                });
             }
 
             if (interaction.commandName === 'setup-shop') {
@@ -659,12 +675,17 @@ client.on('interactionCreate', async (interaction) => {
                 return await interaction.reply({ content: `💰 ยอดเงินคงเหลือของคุณคือ **${bal}** บาท`, ephemeral: true });
             }
 
+            // 🧧 ปุ่มเติมเงิน TrueMoney
             if (interaction.customId === 'btn_topup_truemoney') {
-                const modal = new ModalBuilder().setCustomId('modal_topup_truemoney').setTitle('🧧 เติมเงินผ่าน TrueMoney Wallet');
+                const logsCfg = client.shopLogsConfig.get(interaction.guild.id);
+                const accName = logsCfg?.accountName || 'ไม่ระบุชื่อบัญชี';
+                const twNo = logsCfg?.truewallet || 'ไม่ระบุ';
+
+                const modal = new ModalBuilder().setCustomId('modal_topup_truemoney').setTitle('🧧 เติมเงิน TrueMoney Wallet');
                 const voucherInput = new TextInputBuilder()
                     .setCustomId('input_voucher_url')
-                    .setLabel('กรอกลิงก์ซองของขวัญ TrueMoney')
-                    .setPlaceholder('https://gift.truemoney.com/v2/verify?v=...')
+                    .setLabel(`ชื่อบัญชี: ${accName} | เบอร์: ${twNo}`)
+                    .setPlaceholder('วางลิงก์ซองของขวัญ https://gift.truemoney.com/v2/verify?v=...')
                     .setStyle(TextInputStyle.Short)
                     .setRequired(true);
 
@@ -672,15 +693,22 @@ client.on('interactionCreate', async (interaction) => {
                 return await interaction.showModal(modal);
             }
 
+            // 📲 ปุ่มเติมเงิน PromptPay / QR Code
             if (interaction.customId === 'btn_topup_promptpay') {
                 const logsCfg = client.shopLogsConfig.get(interaction.guild.id);
+                const accName = logsCfg?.accountName || 'กรุณาสอบถามแอดมิน';
                 const ppNo = logsCfg?.promptpay || 'กรุณาสอบถามแอดมิน';
+                const qrUrl = logsCfg?.qrCodeUrl || null;
 
                 const ppEmbed = new EmbedBuilder()
                     .setTitle('📲 เติมเงินผ่าน PromptPay / QR Code')
                     .setColor(0x3498DB)
-                    .setDescription(`**เลขบัญชี / พร้อมเพย์:** \`${ppNo}\`\n\n📌 **วิธีเติมเงิน:**\n1. โอนเงินตามจำนวนที่ต้องการ\n2. กดปุ่ม **"📩 แจ้งแนบสลิปการโอนเงิน"** ด้านล่างเพื่อส่งข้อมูลสลิป`)
+                    .setDescription(`👤 **ชื่อบัญชีรับเงิน:** \`${accName}\`\n💳 **เลขบัญชี / พร้อมเพย์:** \`${ppNo}\`\n\n📌 **วิธีเติมเงิน:**\n1. โอนเงินหรือสแกน QR Code ตามจำนวนที่ต้องการ\n2. กดปุ่ม **"📩 แจ้งแนบสลิปการโอนเงิน"** ด้านล่างเพื่อส่งข้อมูลสลิป`)
                     .setFooter({ text: 'ระบบจะส่งข้อมูลการโอนไปให้แอดมินตรวจสอบครับ' });
+
+                if (qrUrl && qrUrl.startsWith('http')) {
+                    ppEmbed.setImage(qrUrl);
+                }
 
                 const btnRow = new ActionRowBuilder().addComponents(
                     new ButtonBuilder().setCustomId('btn_notify_slip').setLabel('📩 แจ้งแนบสลิปการโอนเงิน').setStyle(ButtonStyle.Primary)
@@ -882,7 +910,8 @@ client.on('interactionCreate', async (interaction) => {
                         .addFields(
                             { name: '👤 ผู้แจ้ง', value: `<@${interaction.user.id}>`, inline: true },
                             { name: '💵 จำนวนเงิน', value: `${amount} บาท`, inline: true },
-                            { name: '⏰ เวลาโอน', value: time, inline: true }
+                            { name: '⏰ เวลาโอน', value: time, inline: true },
+                            { name: '👤 ชื่อบัญชีรับเงิน', value: logsCfg.accountName || 'ไม่ระบุ', inline: false }
                         )
                         .setFooter({ text: 'แอดมินกรุณาตรวจสอบสลิปแล้วกดปุ่มอนุมัติด้านล่าง' })
                         .setTimestamp();
@@ -917,7 +946,7 @@ client.on('messageCreate', async (message) => {
             .addFields(
                 { 
                     name: '🛍️ ระบบร้านค้าขายยศ & เติมเงิน (Shop & Topup)', 
-                    value: '• `/setup-shop` : ส่งหน้าร้านค้าไปยังห้องที่ต้องการ\n• `/add-shop-item` : เพิ่ม/แก้ไข ยศ (หน้าร้านค้าจะอัปเดตเรียลไทม์ทันที!)\n• `/setup-shop-logs` : ตั้งค่าห้อง Log เติมเงิน, Log ซื้อขาย และเบอร์ PromptPay' 
+                    value: '• `/setup-shop` : ส่งหน้าร้านค้าไปยังห้องที่ต้องการ\n• `/add-shop-item` : เพิ่ม/แก้ไข ยศ (หน้าร้านค้าจะอัปเดตเรียลไทม์ทันที!)\n• `/setup-shop-logs` : ตั้งค่าห้อง Logs, ชื่อบัญชีรับเงิน, Wallet, PromptPay และ QR Code' 
                 },
                 { 
                     name: '🎭 ระบบรับยศอัตโนมัติ (Role Systems)', 
