@@ -146,8 +146,15 @@ async function updateShopMessage(guild) {
     }
 }
 
-// 📌 ลงทะเบียน Slash Commands
+// 📌 ลงทะเบียน Slash Commands (รวมระบบเสกเงิน /give-money)
 const commands = [
+    new SlashCommandBuilder()
+        .setName('give-money')
+        .setDescription('🪄 [แอดมิน] เสกเงิน / เพิ่มเครดิตให้แก่สมาชิกที่ต้องการ')
+        .setDefaultMemberPermissions(PermissionFlagsBits.Administrator)
+        .addUserOption(opt => opt.setName('user').setDescription('เลือกสมาชิกที่ต้องการเสกเงินให้').setRequired(true))
+        .addIntegerOption(opt => opt.setName('amount').setDescription('จำนวนเงินที่ต้องการเพิ่ม (บาท)').setRequired(true)),
+
     new SlashCommandBuilder()
         .setName('setup-shop')
         .setDescription('ตั้งค่าห้องและส่งหน้าร้านค้าขายยศ')
@@ -290,7 +297,7 @@ client.on('guildMemberAdd', async (member) => {
     await sendWelcomeCard(ch, member, role, wCfg.bannerUrl);
 });
 
-// 🔴 Message Event (แนบสลิปในช่อง, พิมพ์จุด, Prefix Commands)
+// 🔴 Message Event
 client.on('messageCreate', async (message) => {
     if (message.author.bot || !message.guild) return;
 
@@ -347,7 +354,7 @@ client.on('messageCreate', async (message) => {
             .addFields(
                 { name: '🛍️ ระบบร้านค้าขายยศ & เติมเงิน', value: '• `/setup-shop` : ตั้งค่าหน้าร้าน\n• `/add-shop-item` : เพิ่มยศและสต็อก (อัปเดตหน้าร้านทันที)\n• `/setup-shop-logs` : ตั้งค่าห้อง Log, บัญชีชำระเงิน และรูป QR Code' },
                 { name: '🎭 ระบบรับยศ', value: '• `/setup_dropdown` : Dropdown รับยศ\n• `/setup_buttons` : ปุ่มรับยศ\n• `/setup-dot-role` : พิมพ์จุดรับยศ' },
-                { name: '🎟️ ระบบจัดการ & แอดมิน', value: '• `/setup-ticket` : ระบบตั๋ว\n• `/setup-report` : แจ้งผู้ทำผิด\n• `/setup-admin` : แผงควบคุมเสกเงิน' },
+                { name: '🎟️ ระบบจัดการ & แอดมิน', value: '• `/give-money` : คำสั่งเสกเงินให้ผู้ใช้ที่ต้องการ\n• `/setup-ticket` : ระบบตั๋ว\n• `/setup-report` : แจ้งผู้ทำผิด\n• `/setup-admin` : แผงควบคุมเสกเงิน' },
                 { name: '📊 Prefix Commands', value: '• `!status` : เช็กคนไม่มียศ\n• `!botsetup` : เปิดดูคู่มือนี้' }
             );
 
@@ -376,6 +383,31 @@ client.on('interactionCreate', async (interaction) => {
         if (interaction.isChatInputCommand()) {
             await interaction.deferReply({ ephemeral: true }).catch(() => null);
 
+            // 📌 0. คำสั่งเสกเงินแอดมิน (/give-money)
+            if (interaction.commandName === 'give-money') {
+                const targetUser = interaction.options.getUser('user');
+                const amount = interaction.options.getInteger('amount');
+
+                if (amount <= 0) {
+                    return await interaction.editReply({ content: '❌ จำนวนเงินต้องมากกว่า 0 บาท' });
+                }
+
+                db.userBalances[targetUser.id] = (db.userBalances[targetUser.id] || 0) + amount;
+                saveDatabase();
+
+                const embed = new EmbedBuilder()
+                    .setTitle('🪄 เสกเงิน / เพิ่มเครดิตสำเร็จ!')
+                    .setColor('#2ECC71')
+                    .addFields(
+                        { name: '👤 ผู้รับเงิน', value: `<@${targetUser.id}> (\`${targetUser.id}\`)`, inline: true },
+                        { name: '💵 จำนวนเงินที่เพิ่ม', value: `\`+${amount}\` บาท`, inline: true },
+                        { name: '💰 ยอดเงินรวมสะสม', value: `\`${db.userBalances[targetUser.id]}\` บาท`, inline: true }
+                    )
+                    .setTimestamp();
+
+                return await interaction.editReply({ embeds: [embed] });
+            }
+
             // 1. /setup-shop
             if (interaction.commandName === 'setup-shop') {
                 const channel = interaction.options.getChannel('channel');
@@ -398,7 +430,7 @@ client.on('interactionCreate', async (interaction) => {
                 return await interaction.editReply({ content: `✅ สร้างและบันทึกหน้าร้านค้าในช่อง <#${channel.id}> เรียบร้อยแล้ว!` });
             }
 
-            // 2. /add-shop-item (อัปเดตทันทีภายใน 1-5 วินาที)
+            // 2. /add-shop-item
             if (interaction.commandName === 'add-shop-item') {
                 const role = interaction.options.getRole('role');
                 const price = interaction.options.getInteger('price');
@@ -420,7 +452,7 @@ client.on('interactionCreate', async (interaction) => {
                 return await interaction.editReply({ content: `✅ เพิ่ม/แก้ไขยศ **${role.name}** ราคา **${price}** บาท [สต็อก: ${stock}] เรียบร้อย! หน้าร้านค้าอัปเดตทันที` });
             }
 
-            // 3. /setup-shop-logs (ตั้งค่ารูป QR Code พร้อมเพย์ร้านค้า)
+            // 3. /setup-shop-logs
             if (interaction.commandName === 'setup-shop-logs') {
                 const topupLog = interaction.options.getChannel('topup_log');
                 const shopLog = interaction.options.getChannel('shop_log');
@@ -586,7 +618,6 @@ client.on('interactionCreate', async (interaction) => {
                 return await interaction.showModal(modal);
             }
 
-            // 📌 แสดงรูปภาพ QR Code พร้อมเพย์ร้านค้าตามที่แนบไว้ตอนตั้งค่า
             if (interaction.customId === 'btn_topup_promptpay') {
                 const cfg = db.shopLogsConfig[interaction.guild.id];
                 const ppNumber = cfg?.promptpay || 'ไม่ระบุ';
@@ -602,7 +633,6 @@ client.on('interactionCreate', async (interaction) => {
                         `กรุณาแนบภาพสลิปโอนเงินลงในช่องนี้ หรือเปิดตั๋วเพื่อแจ้งแอดมินได้เลยครับ`
                     );
 
-                // หากแอดมินแนบลิงก์รูป QR Code ไว้ ให้แสดงผล
                 if (cfg?.qrImageUrl && isValidHttpUrl(cfg.qrImageUrl)) {
                     embed.setImage(cfg.qrImageUrl);
                 }
@@ -610,7 +640,7 @@ client.on('interactionCreate', async (interaction) => {
                 return await interaction.reply({ embeds: [embed], ephemeral: true });
             }
 
-            // 📌 ปุ่มเสกเงินแอดมิน
+            // 📌 ปุ่มเสกเงินแอดมินใน Modal
             if (interaction.customId === 'btn_admin_give_money') {
                 if (!interaction.member.permissions.has(PermissionFlagsBits.Administrator)) {
                     return await interaction.reply({ content: '❌ คุณไม่มีสิทธิ์ใช้งานปุ่มนี้', ephemeral: true });
@@ -672,17 +702,14 @@ client.on('interactionCreate', async (interaction) => {
                 const role = interaction.guild.roles.cache.get(roleId);
                 if (!role) return await interaction.reply({ content: '❌ ไม่พบยศนี้ในเซิร์ฟเวอร์', ephemeral: true });
 
-                // หักเงิน และ ตัดสต็อก
                 db.userBalances[interaction.user.id] -= shopItem.price;
                 shopItem.stock -= 1;
                 saveDatabase();
 
                 await interaction.member.roles.add(role).catch(() => null);
 
-                // ⚡ อัปเดตหน้าร้านค้าทันทีเปลี่ยนสต็อก
                 await updateShopMessage(interaction.guild);
 
-                // ส่ง Log การซื้อขาย
                 const shopCfg = db.shopLogsConfig[interaction.guild.id];
                 if (shopCfg?.shopLogId) {
                     const logCh = interaction.guild.channels.cache.get(shopCfg.shopLogId);
@@ -724,7 +751,7 @@ client.on('interactionCreate', async (interaction) => {
         if (interaction.isModalSubmit()) {
             await interaction.deferReply({ ephemeral: true }).catch(() => null);
 
-            // 📌 เสกเงินแอดมิน
+            // 📌 เสกเงินผ่าน Modal
             if (interaction.customId === 'modal_admin_give_money') {
                 const targetId = interaction.fields.getTextInputValue('input_target_id').trim();
                 const amount = parseInt(interaction.fields.getTextInputValue('input_amount').trim(), 10);
