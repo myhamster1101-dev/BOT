@@ -77,7 +77,7 @@ function isValidHttpUrl(string) {
     }
 }
 
-// 📌 ลงทะเบียน Slash Commands ครบถ้วนเป๊ะๆ ทุก Options (13 Slash Commands)
+// 📌 ลงทะเบียน Slash Commands ครบถ้วน (13 Slash Commands)
 const commands = [
     // 🛍️ หมวด 1: Shop & Topup
     new SlashCommandBuilder()
@@ -101,11 +101,12 @@ const commands = [
 
     new SlashCommandBuilder()
         .setName('setup-shop-logs')
-        .setDescription('ตั้งค่าห้อง Log เติมเงิน, Log ซื้อขาย และเบอร์พร้อมเพย์')
+        .setDescription('ตั้งค่าห้อง Log เติมเงิน, Log ซื้อขาย และเบอร์/ชื่อบัญชีชำระเงิน')
         .setDefaultMemberPermissions(PermissionFlagsBits.Administrator)
         .addChannelOption(opt => opt.setName('topup_log').setDescription('เลือกห้อง Log เติมเงิน').setRequired(true))
         .addChannelOption(opt => opt.setName('shop_log').setDescription('เลือกห้อง Log ซื้อขาย').setRequired(true))
         .addStringOption(opt => opt.setName('promptpay').setDescription('เบอร์พร้อมเพย์/เลขบัญชี').setRequired(false))
+        .addStringOption(opt => opt.setName('account_name').setDescription('ชื่อบัญชี (เช่น นาย สมชาย ใจดี)').setRequired(false))
         .addStringOption(opt => opt.setName('truewallet').setDescription('เบอร์ TrueMoney Wallet').setRequired(false)),
 
     // 🎭 หมวด 2: Role Systems
@@ -258,7 +259,7 @@ client.on('messageCreate', async (message) => {
             .setColor('#3498DB')
             .setDescription('รวมคำสั่งสำหรับแอดมินในการตั้งค่าระบบต่างๆ ในเซิร์ฟเวอร์ด้วย Slash Commands ( `/` ) และ Prefix Commands ( `!` )')
             .addFields(
-                { name: '🛍️ ระบบร้านค้าขายยศ & เติมเงิน (Shop & Topup)', value: '• `/setup-shop` : ตั้งค่าห้องและส่งหน้าร้านค้าขายยศ\n• `/add-shop-item` : เพิ่ม/แก้ไข ยศที่ต้องการขายและกำหนดราคา\n• `/setup-shop-logs` : ตั้งค่าห้อง Log เติมเงิน, Log ซื้อขาย และเบอร์พร้อมเพย์' },
+                { name: '🛍️ ระบบร้านค้าขายยศ & เติมเงิน (Shop & Topup)', value: '• `/setup-shop` : ตั้งค่าห้องและส่งหน้าร้านค้าขายยศ\n• `/add-shop-item` : เพิ่ม/แก้ไข ยศที่ต้องการขายและกำหนดราคา\n• `/setup-shop-logs` : ตั้งค่าห้อง Log เติมเงิน, Log ซื้อขาย และเบอร์/ชื่อบัญชีชำระเงิน' },
                 { name: '🎭 ระบบรับยศอัตโนมัติ (Role Systems)', value: '• `/setup_dropdown` : เพิ่ม Dropdown เลือกกดรับยศไม่จำกัด (ใส่ ID คั่นด้วย `,`)\n• `/setup_buttons` : เพิ่มปุ่มกดรับยศใส่ข้อความเดิม\n• `/setup-dot-role` : ตั้งค่าห้องพิมพ์จุด (`.`) เพื่อรับยศ' },
                 { name: '🎉 ระบบต้อนรับ & แจ้งเตือน (Welcome & Boost)', value: '• `/setup-welcome` : ตั้งค่าห้องและข้อความต้อนรับคนเข้าดิส\n• `/test-welcome` : ทดสอบการทำงานระบบต้อนรับ\n• `/setup-boost` : ตั้งค่าห้องขอบคุณคน Boost เซิร์ฟเวอร์\n• `/test-boost` : ทดสอบส่งข้อความแจ้งเตือน Boost' },
                 { name: '🎟️ ระบบ Ticket & แจ้งเรื่อง (Management)', value: '• `/setup-ticket` : สร้างปุ่มกดเปิดตั๋วร้องเรียน\n• `/setup-report` : สร้างปุ่มรายงานผู้กระทำผิด\n• `/setup-admin` : แผงควบคุมลงโทษ/จัดการผู้ใช้' },
@@ -373,12 +374,19 @@ client.on('interactionCreate', async (interaction) => {
                 const topupLog = interaction.options.getChannel('topup_log');
                 const shopLog = interaction.options.getChannel('shop_log');
                 const promptpay = interaction.options.getString('promptpay') || 'ไม่ระบุ';
+                const accountName = interaction.options.getString('account_name') || 'ไม่ระบุ';
                 const truewallet = interaction.options.getString('truewallet') || 'ไม่ระบุ';
 
-                db.shopLogsConfig[interaction.guild.id] = { topupLogId: topupLog.id, shopLogId: shopLog.id, promptpay, truewallet };
+                db.shopLogsConfig[interaction.guild.id] = { 
+                    topupLogId: topupLog.id, 
+                    shopLogId: shopLog.id, 
+                    promptpay, 
+                    accountName, 
+                    truewallet 
+                };
                 saveDatabase();
 
-                return await interaction.editReply({ content: '✅ บันทึกช่อง Log และบัญชีชำระเงินเรียบร้อยแล้ว!' });
+                return await interaction.editReply({ content: '✅ บันทึกช่อง Log และข้อมูลบัญชีชำระเงินเรียบร้อยแล้ว!' });
             }
 
             // 4. /setup_dropdown
@@ -530,7 +538,12 @@ client.on('interactionCreate', async (interaction) => {
                 const embed = new EmbedBuilder()
                     .setTitle('📲 ข้อมูลการชำระเงินผ่าน PromptPay')
                     .setColor('#3498DB')
-                    .setDescription(`💳 **พร้อมเพย์/เลขบัญชี:** \`${cfg?.promptpay || 'กรุณาสอบถามแอดมิน'}\`\n🧧 **TrueWallet:** \`${cfg?.truewallet || 'กรุณาสอบถามแอดมิน'}\`\n\nเมื่อโอนเงินสำเร็จ แจ้งสลิปกับแอดมินทางตั๋วเพื่อเติมเครดิตครับ`);
+                    .setDescription(
+                        `💳 **พร้อมเพย์/เลขบัญชี:** \`${cfg?.promptpay || 'กรุณาสอบถามแอดมิน'}\`\n` +
+                        `👤 **ชื่อบัญชี:** \`${cfg?.accountName || 'กรุณาสอบถามแอดมิน'}\`\n` +
+                        `🧧 **TrueWallet:** \`${cfg?.truewallet || 'กรุณาสอบถามแอดมิน'}\`\n\n` +
+                        `เมื่อโอนเงินสำเร็จ แจ้งสลิปกับแอดมินทางตั๋วเพื่อเติมเครดิตครับ`
+                    );
                 return await interaction.reply({ embeds: [embed], ephemeral: true });
             }
 
