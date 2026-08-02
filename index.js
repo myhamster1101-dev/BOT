@@ -32,7 +32,10 @@ const REPORT_LOG_CHANNEL_ID = process.env.REPORT_LOG_CHANNEL_ID;
 const BAN_LOG_CHANNEL_ID = process.env.BAN_LOG_CHANNEL_ID;
 const BANNED_ROLE_ID = process.env.BANNED_ROLE_ID;
 
-// 🟢 ตัวแปรเก็บการตั้งค่าระบบพิมพ์จุด (เก็บลงหน่วยความจำของบอท)
+// 🟢 เพิ่ม ID ห้องสำหรับส่งข้อความขอบคุณคน Boost
+const BOOST_LOG_CHANNEL_ID = process.env.BOOST_LOG_CHANNEL_ID;
+
+// ตัวแปรเก็บการตั้งค่าระบบพิมพ์จุด
 client.dotRoleConfigs = client.dotRoleConfigs || new Map();
 
 // 1. Slash Commands Definition
@@ -126,13 +129,11 @@ function createSetupModal(customId, title, defaultTitle, defaultDesc, defaultBtn
 // 2. Main Interaction Listener
 client.on('interactionCreate', async (interaction) => {
     try {
-        // --- A. COMMAND HANDLERS ---
         if (interaction.isChatInputCommand()) {
             if (interaction.commandName === 'setup-dot-role') {
                 const targetChannel = interaction.options.getChannel('channel');
                 const targetRole = interaction.options.getRole('role');
 
-                // บันทึกการตั้งค่าลง Map
                 client.dotRoleConfigs.set(targetChannel.id, targetRole.id);
 
                 const embed = new EmbedBuilder()
@@ -145,35 +146,17 @@ client.on('interactionCreate', async (interaction) => {
             }
 
             if (interaction.commandName === 'setup-ticket') {
-                const modal = createSetupModal(
-                    'modal_config_ticket', 
-                    '⚙️ ตั้งค่าระบบส่งเรื่องร้องเรียน', 
-                    '📝 แจ้งปัญหาและส่งเรื่องร้องเรียน', 
-                    'กดปุ่มด้านล่างเพื่อส่งเรื่องร้องเรียนหรือแจ้งปัญหากับทีมงาน', 
-                    'ส่งเรื่องร้องเรียน'
-                );
+                const modal = createSetupModal('modal_config_ticket', '⚙️ ตั้งค่าระบบส่งเรื่องร้องเรียน', '📝 แจ้งปัญหาและส่งเรื่องร้องเรียน', 'กดปุ่มด้านล่างเพื่อส่งเรื่องร้องเรียนหรือแจ้งปัญหากับทีมงาน', 'ส่งเรื่องร้องเรียน');
                 return await interaction.showModal(modal);
             }
 
             if (interaction.commandName === 'setup-report') {
-                const modal = createSetupModal(
-                    'modal_config_report', 
-                    '⚙️ ตั้งค่าระบบรายงานผู้กระทำผิด', 
-                    '⚠️ รายงานผู้กระทำผิด / สมาชิกทำผิดกฏ', 
-                    'หากพบเห็นสมาชิกทำผิดกฏ สามารถกดปุ่มด้านล่างเพื่อแจ้งทีมงานได้ทันที', 
-                    'รายงานผู้กระทำผิด'
-                );
+                const modal = createSetupModal('modal_config_report', '⚙️ ตั้งค่าระบบรายงานผู้กระทำผิด', '⚠️ รายงานผู้กระทำผิด / สมาชิกทำผิดกฏ', 'หากพบเห็นสมาชิกทำผิดกฏ สามารถกดปุ่มด้านล่างเพื่อแจ้งทีมงานได้ทันที', 'รายงานผู้กระทำผิด');
                 return await interaction.showModal(modal);
             }
 
             if (interaction.commandName === 'setup-admin') {
-                const modal = createSetupModal(
-                    'modal_config_admin', 
-                    '⚙️ ตั้งค่าแผงควบคุมแอดมิน', 
-                    '🛠️ แผงควบคุมระบบจัดการผู้ใช้', 
-                    'กดปุ่มด้านล่างเพื่อเปิดแบบฟอร์มจัดการและลงโทษผู้กระทำผิด', 
-                    'จัดการผู้ใช้'
-                );
+                const modal = createSetupModal('modal_config_admin', '⚙️ ตั้งค่าแผงควบคุมแอดมิน', '🛠️ แผงควบคุมระบบจัดการผู้ใช้', 'กดปุ่มด้านล่างเพื่อเปิดแบบฟอร์มจัดการและลงโทษผู้กระทำผิด', 'จัดการผู้ใช้');
                 return await interaction.showModal(modal);
             }
 
@@ -266,7 +249,7 @@ client.on('interactionCreate', async (interaction) => {
             }
         }
 
-        // --- B. BUTTON HANDLERS ---
+        // --- BUTTON & MODAL HANDLERS (เหมือนเดิม) ---
         if (interaction.isButton()) {
             if (interaction.customId === 'btn_cmd_ticket') {
                 const modal = new ModalBuilder().setCustomId('modal_cmd_ticket_submit').setTitle('📝 แบบฟอร์มส่งเรื่องร้องเรียน');
@@ -304,7 +287,6 @@ client.on('interactionCreate', async (interaction) => {
             }
         }
 
-        // --- C. MODAL SUBMIT HANDLERS ---
         if (interaction.isModalSubmit()) {
             if (interaction.customId.startsWith('modal_config_')) {
                 const title = interaction.fields.getTextInputValue('cfg_title');
@@ -434,7 +416,6 @@ client.on('interactionCreate', async (interaction) => {
             }
         }
 
-        // --- D. SELECT MENU HANDLERS ---
         if (interaction.isStringSelectMenu()) {
             if (interaction.customId.startsWith('menu_admin_penalty_')) {
                 const targetId = interaction.customId.replace('menu_admin_penalty_', '');
@@ -504,35 +485,63 @@ client.on('interactionCreate', async (interaction) => {
 });
 
 // --------------------------------------------------
+// 🚀 ระบบตรวจจับการ Server Boost (ส่งข้อความขอบคุณ)
+// --------------------------------------------------
+client.on('guildMemberUpdate', async (oldMember, newMember) => {
+    // เช็กว่ามีการเปลี่ยนสถานะการ Boost หรือไม่
+    const oldBoost = oldMember.premiumSince;
+    const newBoost = newMember.premiumSince;
+
+    // ถ้าเดิมไม่มี Boost แต่ใหม่มี Boost (แปลว่าพึ่งกด Boost!)
+    if (!oldBoost && newBoost) {
+        const boostChannel = newMember.guild.channels.cache.get(BOOST_LOG_CHANNEL_ID);
+        if (!boostChannel) return;
+
+        const totalBoosts = newMember.guild.premiumSubscriptionCount || 0;
+        const boostLevel = newMember.guild.premiumTier;
+
+        const boostEmbed = new EmbedBuilder()
+            .setTitle('🚀 ขอบคุณสำหรับการ Server Boost!')
+            .setColor(0xF47FFF) // สีชมพูประกายดิสคอร์ด
+            .setDescription(`💖 ขอบคุณคุณ <@${newMember.id}> มากๆ นะครับที่ช่วยสนับสนุนเซิร์ฟเวอร์ **${newMember.guild.name}** ของพวกเรา!\n\nการสนับสนุนของคุณมีความหมายกับพวกเรามากเลยครับ! ✨`)
+            .addFields(
+                { name: '💎 ยอด Boost รวมในเซิร์ฟเวอร์', value: `\`${totalBoosts}\` บูสต์`, inline: true },
+                { name: '⭐ Server Level', value: `\`Level ${boostLevel}\``, inline: true }
+            )
+            .setThumbnail(newMember.user.displayAvatarURL({ dynamic: true }))
+            .setFooter({ text: 'ขอบคุณที่ร่วมเป็นส่วนหนึ่งในการพัฒนาเซิร์ฟเวอร์ครับ 💖' })
+            .setTimestamp();
+
+        // ส่งข้อความแท็กเรียก พร้อมแนบ Embed ขอบคุณ
+        await boostChannel.send({
+            content: `🎉 **NEW BOOST!** ขอบคุณ <@${newMember.id}> มากครับ! 🚀✨`,
+            embeds: [boostEmbed]
+        }).catch(err => console.error('ส่งข้อความ Boost ล้มเหลว:', err));
+    }
+});
+
+// --------------------------------------------------
 // 🔴 ระบบตรวจสอบข้อความ พิมพ์จุด (.) เพื่อรับยศ
 // --------------------------------------------------
 client.on('messageCreate', async (message) => {
     if (message.author.bot || !message.guild) return;
 
-    // เช็กว่าห้องนี้ถูกตั้งค่าระบบพิมพ์จุดไว้หรือไม่
     const roleId = client.dotRoleConfigs.get(message.channel.id);
     if (roleId) {
-        
-        // ถ้าสมาชิกพิมพ์ . (หรือพิมพ์ข้อความอะไรก็ตามในห้องนี้)
         if (message.content.trim() === '.' || message.content.length > 0) {
-            
-            // ลบข้อความสมาชิกทันที
             await message.delete().catch(() => null);
 
             try {
                 const role = message.guild.roles.cache.get(roleId);
                 if (!role) return;
 
-                // เช็กว่ามียศอยู่แล้วหรือไม่
                 if (message.member.roles.cache.has(roleId)) {
                     return message.channel.send(`⚠️ <@${message.author.id}> คุณมียศ **${role.name}** อยู่แล้วครับ!`)
                         .then(msg => setTimeout(() => msg.delete().catch(() => null), 4000));
                 }
 
-                // มอบยศให้สมาชิก
                 await message.member.roles.add(role);
 
-                // ส่งข้อความต้อนรับและลบทิ้งใน 5 วินาที
                 return message.channel.send(`🎉 ยินดีต้อนรับ <@${message.author.id}> ! บอทได้มอบยศ **${role.name}** ให้เรียบร้อยแล้วครับ ✅`)
                     .then(msg => setTimeout(() => msg.delete().catch(() => null), 5000));
 
