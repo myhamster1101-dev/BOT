@@ -36,7 +36,7 @@ const BANNED_ROLE_ID = process.env.BANNED_ROLE_ID;
 // 🚀 ID ห้องสำหรับแจ้งเตือนขอบคุณคน Boost
 const BOOST_LOG_CHANNEL_ID = process.env.BOOST_LOG_CHANNEL_ID;
 
-// ตัวแปรเก็บการตั้งค่าระบบพิมพ์จุด
+// ตัวแปรเก็บการตั้งค่าระบบพิมพ์จุด (เก็บ Map ข้อมูลห้อง ยศ และรูปแบบ Embed)
 client.dotRoleConfigs = client.dotRoleConfigs || new Map();
 
 // 1. Slash Commands Definition
@@ -67,7 +67,15 @@ const commands = [
         .addRoleOption(option =>
             option.setName('role')
                 .setDescription('เลือกยศที่จะให้เมื่อพิมพ์จุด')
-                .setRequired(true)),
+                .setRequired(true))
+        .addStringOption(option =>
+            option.setName('banner_url')
+                .setDescription('ใส่ลิงก์รูปภาพ Banner ใน Embed (ใส่ - หรือเว้นว่างถ้าไม่มี)')
+                .setRequired(false))
+        .addStringOption(option =>
+            option.setName('color')
+                .setDescription('โค้ดสี HEX เช่น #2ECC71 หรือ GREEN')
+                .setRequired(false)),
 
     new SlashCommandBuilder()
         .setName('setup_dropdown')
@@ -134,13 +142,20 @@ client.on('interactionCreate', async (interaction) => {
             if (interaction.commandName === 'setup-dot-role') {
                 const targetChannel = interaction.options.getChannel('channel');
                 const targetRole = interaction.options.getRole('role');
+                const bannerUrl = interaction.options.getString('banner_url') || null;
+                const colorHex = interaction.options.getString('color') || '#2ECC71';
 
-                client.dotRoleConfigs.set(targetChannel.id, targetRole.id);
+                // บันทึกการตั้งค่าลง Map
+                client.dotRoleConfigs.set(targetChannel.id, {
+                    roleId: targetRole.id,
+                    bannerUrl: (bannerUrl && bannerUrl !== '-') ? bannerUrl : null,
+                    color: colorHex
+                });
 
                 const embed = new EmbedBuilder()
                     .setTitle('⚙️ ตั้งค่าระบบพิมพ์จุดรับยศสำเร็จ!')
                     .setColor(0x2ECC71)
-                    .setDescription(`เมื่อมีสมาชิกพิมพ์จุด \`.\` ในห้อง <#${targetChannel.id}> บอทจะทำการแปะอิโมจิ ✅ และมอบยศ **${targetRole.name}** ให้ทันทีครับ!`)
+                    .setDescription(`เมื่อมีสมาชิกพิมพ์จุด \`.\` ในห้อง <#${targetChannel.id}> \n- บอทจะทำการกด **✅ ถาวร** บนข้อความ\n- มอบยศ **${targetRole.name}**\n- ส่งข้อความต้อนรับในรูปแบบ Embed สวยงาม`)
                     .setTimestamp();
 
                 return await interaction.reply({ embeds: [embed], ephemeral: true });
@@ -492,7 +507,6 @@ client.on('guildMemberUpdate', async (oldMember, newMember) => {
     const oldBoost = oldMember.premiumSince;
     const newBoost = newMember.premiumSince;
 
-    // ถ้าพบการกด Server Boost
     if (!oldBoost && newBoost) {
         const boostChannel = newMember.guild.channels.cache.get(BOOST_LOG_CHANNEL_ID);
         if (!boostChannel) return;
@@ -520,45 +534,68 @@ client.on('guildMemberUpdate', async (oldMember, newMember) => {
 });
 
 // --------------------------------------------------
-// 🔴 ระบบตรวจสอบข้อความ พิมพ์จุด (.) รับยศ (+แปะอิโมจิ ✅)
+// 🔴 ระบบพิมพ์จุด (.) รับยศ (+แปะอิโมจิ ✅ ถาวร + ตอบกลับ EMBED สวยงาม)
 // --------------------------------------------------
 client.on('messageCreate', async (message) => {
     if (message.author.bot || !message.guild) return;
 
-    const roleId = client.dotRoleConfigs.get(message.channel.id);
-    if (roleId) {
+    const config = client.dotRoleConfigs.get(message.channel.id);
+    if (config) {
+        const roleId = typeof config === 'string' ? config : config.roleId;
+
         if (message.content.trim() === '.' || message.content.length > 0) {
             try {
                 const role = message.guild.roles.cache.get(roleId);
                 if (!role) return;
 
-                // 1. สมาชิกมียศอยู่แล้ว
+                // 1. ถ้าสมาชิกมียศอยู่แล้ว
                 if (message.member.roles.cache.has(roleId)) {
                     await message.react('⚠️').catch(() => null);
                     
-                    const warnMsg = await message.channel.send(`⚠️ <@${message.author.id}> คุณมียศ **${role.name}** อยู่แล้วครับ!`);
+                    const warnMsg = await message.channel.send({
+                        content: `⚠️ <@${message.author.id}> คุณมียศ **${role.name}** อยู่แล้วครับ!`
+                    });
                     
+                    // แจ้งเตือนมียศอยู่แล้วค่อยลบเพื่อไม่ให้ห้องรก
                     setTimeout(() => {
-                        message.delete().catch(() => null);
                         warnMsg.delete().catch(() => null);
                     }, 4000);
                     return;
                 }
 
-                // 2. มอบยศ
+                // 2. มอบยศให้สมาชิก
                 await message.member.roles.add(role);
 
-                // 3. แปะอิโมจิ ✅ ใส่มือข้อความจุดของสมาชิก
+                // 🟢 3. กดแสดงความยินดีใส่อิโมจิติ๊กถูก ✅ บนข้อความจุด (ถาวร! ไม่ลบออก)
                 await message.react('✅').catch(() => null);
 
-                // 4. ส่งข้อความต้อนรับ
-                const successMsg = await message.channel.send(`🎉 ยินดีต้อนรับ <@${message.author.id}> ! บอทได้มอบยศ **${role.name}** ให้เรียบร้อยแล้วครับ ✅`);
+                // 🎨 4. ปรับแต่ง EMBED ต้อนรับอย่างสวยงาม
+                const embedColor = config.color || '#2ECC71';
+                const welcomeEmbed = new EmbedBuilder()
+                    .setTitle('🎉 ยินดีต้อนรับสมาชิกใหม่!')
+                    .setColor(embedColor)
+                    .setDescription(`✨ ยินดีต้อนรับคุณ <@${message.author.id}> เข้าสู่เซิร์ฟเวอร์!\nระบบได้ทำการมอบยศให้เรียบร้อยแล้วครับ ✅`)
+                    .addFields(
+                        { name: '🏷️ ยศที่ได้รับ', value: `<@&${role.id}>`, inline: true },
+                        { name: '📌 สถานะ', value: '\` สำเร็จเรียบร้อย \`', inline: true }
+                    )
+                    .setThumbnail(message.author.displayAvatarURL({ dynamic: true }))
+                    .setFooter({ 
+                        text: `${message.guild.name} • ระบบรับยศอัตโนมัติ`, 
+                        iconURL: message.guild.iconURL({ dynamic: true }) 
+                    })
+                    .setTimestamp();
 
-                // 5. หน่วงเวลา 4 วินาทีแล้วทำการลบข้อความจุดและข้อความต้อนรับ
-                setTimeout(() => {
-                    message.delete().catch(() => null);
-                    successMsg.delete().catch(() => null);
-                }, 4000);
+                // ใส่ รูป Banner (ถ้ามี)
+                if (config.bannerUrl) {
+                    welcomeEmbed.setImage(config.bannerUrl);
+                }
+
+                // 5. ส่งข้อความ EMBED ตอบกลับ (และปล่อยไว้สวยๆ ถาวร)
+                await message.channel.send({
+                    content: `✨ <@${message.author.id}> ได้รับยศเรียบร้อยแล้ว!`,
+                    embeds: [welcomeEmbed]
+                });
 
             } catch (error) {
                 console.error('❌ เกิดข้อผิดพลาดในการมอบยศ:', error);
