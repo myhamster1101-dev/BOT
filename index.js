@@ -35,13 +35,12 @@ const BANNED_ROLE_ID = process.env.BANNED_ROLE_ID;
 client.dotRoleConfigs = client.dotRoleConfigs || new Map();
 client.boostConfigs = client.boostConfigs || new Map();
 
-// 🛠️ ฟังก์ชันแปลงข้อความที่มีตัวแปร {} ให้กลายเป็นแท็กดิสคอร์ดจริงอัตโนมัติ
+// 🛠️ ฟังก์ชันแปลงข้อความที่มีตัวแปร {}
 function parseCustomTags(text, guild, member) {
     if (!text) return '';
 
     let parsedText = text;
 
-    // 1. แทนที่ตัวแปรพื้นฐาน
     if (member) parsedText = parsedText.replace(/\{user\}/g, `<@${member.id}>`);
     if (guild) {
         parsedText = parsedText.replace(/\{guild\}/g, guild.name);
@@ -49,13 +48,11 @@ function parseCustomTags(text, guild, member) {
         parsedText = parsedText.replace(/\{level\}/g, `${guild.premiumTier}`);
     }
 
-    // 2. แปลงตัวแปรแท็กห้องอัตโนมัติ เช่น {#ชื่อห้อง} -> <#ID>
     parsedText = parsedText.replace(/\{#([^}]+)\}/g, (match, channelName) => {
         const targetChan = guild.channels.cache.find(c => c.name.toLowerCase() === channelName.trim().toLowerCase());
         return targetChan ? `<#${targetChan.id}>` : `#${channelName}`;
     });
 
-    // 3. แปลงตัวแปรแท็กยศอัตโนมัติ เช่น {@ชื่อยศ} -> <@&ID>
     parsedText = parsedText.replace(/\{@([^}]+)\}/g, (match, roleName) => {
         const targetRole = guild.roles.cache.find(r => r.name.toLowerCase() === roleName.trim().toLowerCase());
         return targetRole ? `<@&${targetRole.id}>` : `@${roleName}`;
@@ -131,7 +128,6 @@ const commands = [
                 .setDescription('โค้ดสี HEX เช่น #F47FFF หรือ PINK')
                 .setRequired(false)),
 
-    // 🧪 คำสั่งจำลองทดสอบระบบ Boost
     new SlashCommandBuilder()
         .setName('test-boost')
         .setDescription('ทดสอบส่งข้อความแจ้งเตือน Boost จำลองไปยังห้องที่ตั้งค่าไว้')
@@ -201,6 +197,8 @@ client.on('interactionCreate', async (interaction) => {
         if (interaction.isChatInputCommand()) {
 
             if (interaction.commandName === 'setup-dot-role') {
+                await interaction.deferReply({ ephemeral: true });
+
                 const targetChannel = interaction.options.getChannel('channel');
                 const targetRole = interaction.options.getRole('role');
                 const bannerUrl = interaction.options.getString('banner_url') || null;
@@ -218,11 +216,13 @@ client.on('interactionCreate', async (interaction) => {
                     .setDescription(`ตั้งค่าการรับยศ **${targetRole.name}** ในห้อง <#${targetChannel.id}> เรียบร้อยครับ!`)
                     .setTimestamp();
 
-                return await interaction.reply({ embeds: [embed], ephemeral: true });
+                return await interaction.editReply({ embeds: [embed] });
             }
 
-            // 🚀 --- ตั้งค่าระบบขอบคุณคน Boost ---
+            // 🚀 --- ตั้งค่าระบบขอบคุณคน Boost (แก้ไขไม่ให้แอปพลิเคชันไม่ตอบสนอง) ---
             if (interaction.commandName === 'setup-boost') {
+                await interaction.deferReply({ ephemeral: true });
+
                 const targetChannel = interaction.options.getChannel('channel');
                 const title = interaction.options.getString('title') || '🚀 ขอบคุณสำหรับการ Server Boost!';
                 const description = interaction.options.getString('description') || '💖 ขอบคุณคุณ {user} มากๆ นะครับที่ช่วยสนับสนุนเซิร์ฟเวอร์ **{guild}**!\n\nแวะไปพูดคุยกับเพื่อนๆ ได้ที่ห้อง {#พูดคุย-ทั่วไป} หรือดูสิทธิ์พิเศษที่ยศ {@Booster} ได้เลย!';
@@ -245,13 +245,15 @@ client.on('interactionCreate', async (interaction) => {
                     .setDescription(`ตั้งค่าการแจ้งเตือนไว้ที่ห้อง <#${targetChannel.id}> เรียบร้อยครับ!\n\n💡 **คุณสามารถพิมพ์ `/test-boost` เพื่อทดสอบระบบได้ทันที!**`)
                     .setTimestamp();
 
-                return await interaction.reply({ embeds: [previewEmbed], ephemeral: true });
+                return await interaction.editReply({ embeds: [previewEmbed] });
             }
 
             // 🧪 --- ระบบทดสอบ Boost จำลอง ---
             if (interaction.commandName === 'test-boost') {
+                await interaction.deferReply({ ephemeral: true });
+
                 const boostConfig = client.boostConfigs.get(interaction.guild.id) || {
-                    channelId: interaction.channel.id, // หากยังไม่ได้ตั้งค่าให้ทดสอบส่งห้องปัจจุบัน
+                    channelId: interaction.channel.id,
                     title: '🚀 ขอบคุณสำหรับการ Server Boost!',
                     description: '💖 ขอบคุณคุณ {user} มากๆ นะครับที่ช่วยสนับสนุนเซิร์ฟเวอร์ **{guild}**!\n\nแวะไปพูดคุยกับเพื่อนๆ ได้ที่ห้อง {#พูดคุย-ทั่วไป} หรือดูสิทธิ์พิเศษที่ยศ {@Booster} ได้เลย!',
                     contentMessage: '🎉 **TEST BOOST!** ขอบคุณ {user} มากๆ ครับ! 🚀✨',
@@ -261,7 +263,6 @@ client.on('interactionCreate', async (interaction) => {
 
                 const targetChan = interaction.guild.channels.cache.get(boostConfig.channelId) || interaction.channel;
 
-                // แปลงคำสั่ง {} ตัวแปรจำลองด้วยข้อมูลของคุณเอง
                 const formattedTitle = parseCustomTags(boostConfig.title, interaction.guild, interaction.member);
                 const formattedDesc = parseCustomTags(boostConfig.description, interaction.guild, interaction.member);
                 const formattedContent = parseCustomTags(boostConfig.contentMessage, interaction.guild, interaction.member);
@@ -283,15 +284,13 @@ client.on('interactionCreate', async (interaction) => {
                     testEmbed.setImage(boostConfig.bannerUrl);
                 }
 
-                // ส่งข้อความทดสอบไปยังห้องที่ตั้งค่าไว้
                 await targetChan.send({
                     content: `⚠️ **[ข้อความทดสอบระบบ BOOST]**\n${formattedContent}`,
                     embeds: [testEmbed]
                 });
 
-                return await interaction.reply({ 
-                    content: `✅ ส่งข้อความทดสอบระบบ Boost ไปที่ห้อง <#${targetChan.id}> เรียบร้อยแล้วครับ!`, 
-                    ephemeral: true 
+                return await interaction.editReply({ 
+                    content: `✅ ส่งข้อความทดสอบระบบ Boost ไปที่ห้อง <#${targetChan.id}> เรียบร้อยแล้วครับ!`
                 });
             }
 
