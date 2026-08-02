@@ -66,7 +66,7 @@ function parseCustomTags(text, guild, member) {
     return parsedText;
 }
 
-// ⚡ ฟังก์ชันสร้าง Components & Embed หน้าร้านค้า
+// ⚡ ฟังก์ชันอัปเดตหน้าร้านค้าเมื่อมีการเพิ่ม/ลดสินค้า
 async function updateShopDisplay(guild) {
     const config = client.shopMessageConfigs.get(guild.id);
     if (!config) return false;
@@ -140,7 +140,7 @@ async function updateShopDisplay(guild) {
     return true;
 }
 
-// 📌 Defininition สำหรับ Slash Commands
+// 📌 Definition สำหรับ Slash Commands
 const commands = [
     new SlashCommandBuilder()
         .setName('setup-dot-role')
@@ -278,15 +278,17 @@ client.on('interactionCreate', async (interaction) => {
                 if (bannerUrl && bannerUrl.startsWith('http')) shopEmbed.setImage(bannerUrl);
 
                 const guildItems = client.shopItems.get(interaction.guild.id) || [];
-                const shopSelect = new StringSelectMenuBuilder()
-                    .setCustomId('select_buy_shop_role')
-                    .setPlaceholder('🛒 เลือกยศที่คุณต้องการซื้อที่นี่...');
+                const components = [];
 
                 let validItemCount = 0;
                 let decorateStockCount = 0;
                 let otherStockCount = 0;
 
                 if (guildItems.length > 0) {
+                    const shopSelect = new StringSelectMenuBuilder()
+                        .setCustomId('select_buy_shop_role')
+                        .setPlaceholder('🛒 เลือกยศที่คุณต้องการซื้อที่นี่...');
+
                     guildItems.forEach((item) => {
                         const roleObj = interaction.guild.roles.cache.get(item.roleId);
                         if (roleObj && item.stock > 0) {
@@ -301,6 +303,10 @@ client.on('interactionCreate', async (interaction) => {
                             );
                         }
                     });
+
+                    if (validItemCount > 0) {
+                        components.push(new ActionRowBuilder().addComponents(shopSelect));
+                    }
                 }
 
                 let summaryText = '';
@@ -312,11 +318,6 @@ client.on('interactionCreate', async (interaction) => {
 
                 shopEmbed.addFields({ name: '📜 รายการยศที่มีจำหน่ายอัตโนมัติ', value: summaryText });
 
-                const components = [];
-                if (validItemCount > 0) {
-                    components.push(new ActionRowBuilder().addComponents(shopSelect));
-                }
-
                 const btnRow = new ActionRowBuilder().addComponents(
                     new ButtonBuilder().setCustomId('btn_topup_truemoney').setLabel('🧧 เติมเงิน TrueMoney').setStyle(ButtonStyle.Success),
                     new ButtonBuilder().setCustomId('btn_topup_promptpay').setLabel('📲 เติมเงิน PromptPay / QR Code').setStyle(ButtonStyle.Primary),
@@ -324,17 +325,18 @@ client.on('interactionCreate', async (interaction) => {
                 );
                 components.push(btnRow);
 
-                const sentMsg = await targetChannel.send({ embeds: [shopEmbed], components }).catch(() => null);
-
-                if (sentMsg) {
+                // ส่ง Embed และ Components ทันทีตรงๆ โดยไม่ต้องรอดึง/แก้ไขข้อความเก่า
+                try {
+                    const sentMsg = await targetChannel.send({ embeds: [shopEmbed], components });
                     client.shopMessageConfigs.set(interaction.guild.id, {
                         channelId: targetChannel.id,
                         messageId: sentMsg.id,
                         title, description, bannerUrl, color
                     });
                     return await interaction.editReply({ content: `✅ สร้างและส่งหน้าร้านค้าไปยังห้อง <#${targetChannel.id}> เรียบร้อยแล้ว!` });
-                } else {
-                    return await interaction.editReply({ content: '❌ บอทไม่มีสิทธิ์ส่งข้อความในห้องดังกล่าว กรุณาเช็ก Permission' });
+                } catch (err) {
+                    console.error('Send Shop Error:', err);
+                    return await interaction.editReply({ content: '❌ บอทไม่มีสิทธิ์ส่งข้อความในห้องดังกล่าว กรุณาตรวจสอบการตั้งค่า Permission (Send Messages และ Embed Links)' });
                 }
             }
 
