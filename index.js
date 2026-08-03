@@ -32,9 +32,14 @@ const REPORT_LOG_CHANNEL_ID = process.env.REPORT_LOG_CHANNEL_ID;
 const BAN_LOG_CHANNEL_ID = process.env.BAN_LOG_CHANNEL_ID;
 const BANNED_ROLE_ID = process.env.BANNED_ROLE_ID;
 
+// 📌 ไอดีห้องตรวจสอบข้อมูลผู้สมัครทีมงาน
+const STAFF_LOG_CHANNEL_ID = process.env.STAFF_LOG_CHANNEL_ID || process.env.REPORT_LOG_CHANNEL_ID;
+
 client.dotRoleConfigs = client.dotRoleConfigs || new Map();
 client.boostConfigs = client.boostConfigs || new Map();
 client.welcomeConfigs = client.welcomeConfigs || new Map();
+client.staffApplyConfigs = client.staffApplyConfigs || new Map(); // เก็บการตั้งค่าตำแหน่งสมัคร
+client.pendingStaffApps = client.pendingStaffApps || new Map();   // เก็บข้อมูลสมัครชั่วคราว
 
 // 🛠️ ฟังก์ชันแปลงข้อความที่มีตัวแปร {}
 function parseCustomTags(text, guild, member) {
@@ -231,7 +236,6 @@ const commands = [
                 .setDescription('ใส่ลิงก์รูปภาพ Banner ใน Embed (ถ้ามี)')
                 .setRequired(false)),
 
-    // 🚀 เพิ่มระบบ Dropdown ไม่จำกัดยศ (ออโต้แบ่งกลุ่ม 25 ยศ/แถว)
     new SlashCommandBuilder()
         .setName('setup_dropdown')
         .setDescription('เพิ่ม Dropdown เลือกยศแบบไม่จำกัดใส่ข้อความเดิม')
@@ -251,6 +255,36 @@ const commands = [
         .addStringOption(option =>
             option.setName('image_url')
                 .setDescription('ลิงก์รูปภาพ Banner (ถ้ามี)')
+                .setRequired(false)),
+
+    // 🌟 เพิ่มคำสั่งตั้งค่าระบบสมัครทีมงาน
+    new SlashCommandBuilder()
+        .setName('setup-staff-apply')
+        .setDescription('ตั้งค่าและเปิดระบบสมัครทีมงาน')
+        .setDefaultMemberPermissions(PermissionFlagsBits.Administrator)
+        .addStringOption(option =>
+            option.setName('positions')
+                .setDescription('ระบุตำแหน่ง คั่นด้วยจุลภาค เช่น Moderator,Support,Admin')
+                .setRequired(true))
+        .addStringOption(option =>
+            option.setName('roles')
+                .setDescription('ระบุ ID ยศที่จะได้รับตรงกับตำแหน่งตามลำดับ คั่นด้วยจุลภาค')
+                .setRequired(true))
+        .addStringOption(option =>
+            option.setName('title')
+                .setDescription('หัวข้อ Embed ใบสมัคร')
+                .setRequired(false))
+        .addStringOption(option =>
+            option.setName('description')
+                .setDescription('รายละเอียดใน Embed ใบสมัคร')
+                .setRequired(false))
+        .addStringOption(option =>
+            option.setName('banner_url')
+                .setDescription('ลิงก์รูป Banner ใน Embed')
+                .setRequired(false))
+        .addStringOption(option =>
+            option.setName('color')
+                .setDescription('โค้ดสี HEX เช่น #5865F2')
                 .setRequired(false)),
 ].map(command => command.toJSON());
 
@@ -557,7 +591,6 @@ client.on('interactionCreate', async (interaction) => {
                 return await interaction.showModal(modal);
             }
 
-            // 🚀 HANDLER: setup_dropdown แบบรับยศไม่จำกัด (สูงสุด 125 ยศ/ข้อความ)
             if (interaction.commandName === 'setup_dropdown') {
                 await interaction.deferReply({ ephemeral: true });
 
@@ -575,7 +608,6 @@ client.on('interactionCreate', async (interaction) => {
                     return await interaction.editReply({ content: '❌ หาข้อความไม่พบ! กรุณาตรวจสอบ ID ข้อความอีกครั้ง' });
                 }
 
-                // กรองยศที่มีจริงในเซิร์ฟเวอร์
                 const validRoles = [];
                 for (const id of rawRoleIds) {
                     const role = interaction.guild.roles.cache.get(id);
@@ -586,7 +618,6 @@ client.on('interactionCreate', async (interaction) => {
                     return await interaction.editReply({ content: '❌ ไม่พบยศที่ระบุในเซิร์ฟเวอร์ กรุณาเช็ก ID ของยศให้ถูกต้อง' });
                 }
 
-                // หั่นยศออกเป็นกลุ่มละ 25 ยศ (จำกัดของ Discord คือ 25 ตัวเลือก/1 Dropdown, สูงสุด 5 Dropdowns = 125 ยศ)
                 const roleChunks = [];
                 for (let i = 0; i < validRoles.length; i += 25) {
                     roleChunks.push(validRoles.slice(i, i + 25));
@@ -644,6 +675,56 @@ client.on('interactionCreate', async (interaction) => {
                     console.error('Dropdown Setup Error:', err);
                     return await interaction.editReply({ content: '❌ เกิดข้อผิดพลาดในการใส่ Dropdown กรุณาตรวจสอบสิทธิ์บอท' });
                 }
+            }
+
+            // 🌟 HANDLER: ตั้งค่าระบบสมัครทีมงาน
+            if (interaction.commandName === 'setup-staff-apply') {
+                await interaction.deferReply({ ephemeral: true });
+
+                const rawPositions = interaction.options.getString('positions').split(',').map(p => p.trim());
+                const rawRoles = interaction.options.getString('roles').split(',').map(r => r.trim());
+                const title = interaction.options.getString('title') || '📋 แบบฟอร์มสมัครเข้าร่วมทีมงาน';
+                const description = interaction.options.getString('description') || 'หากคุณมีความสนใจอยากเข้ามาเป็นส่วนหนึ่งในการดูแลเซิร์ฟเวอร์ สามารถกดปุ่มด้านล่างเพื่อเลือกตำแหน่งและกรอกใบสมัครได้ทันที!';
+                const bannerUrl = interaction.options.getString('banner_url') || null;
+                const colorHex = interaction.options.getString('color') || '#5865F2';
+
+                if (rawPositions.length !== rawRoles.length) {
+                    return await interaction.editReply({ content: '❌ จำนวนตำแหน่ง และ ID ยศ ต้องมีจำนวนเท่ากันและตรงกัน!' });
+                }
+
+                const positionData = rawPositions.map((pos, idx) => ({
+                    label: pos,
+                    roleId: rawRoles[idx]
+                }));
+
+                client.staffApplyConfigs.set(interaction.guild.id, positionData);
+
+                const embed = new EmbedBuilder()
+                    .setTitle(title)
+                    .setDescription(description)
+                    .setColor(colorHex)
+                    .addFields({ 
+                        name: '📌 ตำแหน่งที่เปิดรับสมัคร', 
+                        value: positionData.map(p => `• **${p.label}** (<@&${p.roleId}>)`).join('\n') 
+                    })
+                    .setFooter({ text: `${interaction.guild.name} • Staff Recruitment` })
+                    .setTimestamp();
+
+                if (bannerUrl && bannerUrl.startsWith('http')) {
+                    embed.setImage(bannerUrl);
+                }
+
+                const btn = new ButtonBuilder()
+                    .setCustomId('btn_start_staff_apply')
+                    .setLabel('📝 กรอกใบสมัครทีมงาน')
+                    .setStyle(ButtonStyle.Success);
+
+                await interaction.channel.send({
+                    embeds: [embed],
+                    components: [new ActionRowBuilder().addComponents(btn)]
+                });
+
+                return await interaction.editReply({ content: '✅ สร้างระบบสมัครทีมงานเรียบร้อยแล้ว!' });
             }
         }
 
@@ -718,6 +799,78 @@ client.on('interactionCreate', async (interaction) => {
                     new ActionRowBuilder().addComponents(problemInput)
                 );
                 return await interaction.showModal(modal);
+            }
+
+            // 🌟 ปุ่มเริ่มกรอกใบสมัคร -> แสดง Dropdown เลือกตำแหน่ง
+            if (interaction.customId === 'btn_start_staff_apply') {
+                const config = client.staffApplyConfigs.get(interaction.guild.id);
+                if (!config || config.length === 0) {
+                    return await interaction.reply({ content: '❌ ไม่พบข้อมูลตำแหน่งที่เปิดรับสมัคร', ephemeral: true });
+                }
+
+                const menu = new StringSelectMenuBuilder()
+                    .setCustomId('select_staff_position')
+                    .setPlaceholder('▼ เลือกตำแหน่งที่คุณต้องการสมัคร')
+                    .addOptions(config.map((p, index) => new StringSelectMenuOptionBuilder().setLabel(p.label).setValue(`${index}`)));
+
+                return await interaction.reply({
+                    content: '📌 กรุณาเลือกตำแหน่งที่ต้องการสมัครจากรายการด้านล่าง:',
+                    components: [new ActionRowBuilder().addComponents(menu)],
+                    ephemeral: true
+                });
+            }
+
+            // 🌟 ปุ่มอนุมัติ / ปฏิเสธ การสมัครทีมงาน
+            if (interaction.customId.startsWith('staff_pass_') || interaction.customId.startsWith('staff_reject_')) {
+                await interaction.deferUpdate();
+
+                const isPass = interaction.customId.startsWith('staff_pass_');
+                const targetUserId = interaction.customId.replace(isPass ? 'staff_pass_' : 'staff_reject_', '');
+                
+                const originalEmbed = interaction.message.embeds[0];
+                if (!originalEmbed) return;
+
+                const targetMember = await interaction.guild.members.fetch(targetUserId).catch(() => null);
+                
+                // ค้นหาตำแหน่งและ Role ID จาก Embed
+                const posField = originalEmbed.fields.find(f => f.name.includes('สมัครตำแหน่ง'));
+                const posName = posField ? posField.value : 'ทีมงาน';
+                
+                const config = client.staffApplyConfigs.get(interaction.guild.id) || [];
+                const matchedPos = config.find(p => p.label === posName);
+
+                if (isPass) {
+                    if (targetMember && matchedPos && matchedPos.roleId) {
+                        await targetMember.roles.add(matchedPos.roleId).catch(() => null);
+                    }
+
+                    const updatedEmbed = EmbedBuilder.from(originalEmbed)
+                        .setColor(0x2ECC71)
+                        .setTitle(`✅ [ผ่านการคัดเลือก] ใบสมัครทีมงาน`)
+                        .addFields({ name: '👤 ดำเนินการโดย', value: `<@${interaction.user.id}>` });
+
+                    await interaction.message.edit({ embeds: [updatedEmbed], components: [] });
+
+                    if (targetMember) {
+                        await targetMember.send(`🎉 **ยินดีด้วยครับ!** ใบสมัครทีมงานตำแหน่ง **${posName}** ในเซิร์ฟเวอร์ **${interaction.guild.name}** ของคุณได้รับการ **อนุมัติ** เรียบร้อยแล้ว!`).catch(() => null);
+                    }
+                } else {
+                    const updatedEmbed = EmbedBuilder.from(originalEmbed)
+                        .setColor(0xED4245)
+                        .setTitle(`❌ [ไม่ผ่านการคัดเลือก] ใบสมัครทีมงาน`)
+                        .addFields({ name: '👤 ดำเนินการโดย', value: `<@${interaction.user.id}>` });
+
+                    await interaction.message.edit({ embeds: [updatedEmbed], components: [] });
+
+                    // แจ้งผู้สมัครด้วยข้อความที่เห็นแค่คนเดียวในห้องสมัคร
+                    const applyChan = interaction.channel;
+                    if (applyChan) {
+                        await applyChan.send({
+                            content: `📢 <@${targetUserId}> เสียใจด้วยครับ ผลการสมัครทีมงานตำแหน่ง **${posName}** ของคุณ **ไม่ผ่านการคัดเลือก** ในครั้งนี้`,
+                            allowedMentions: { users: [targetUserId] }
+                        }).catch(() => null);
+                    }
+                }
             }
         }
 
@@ -857,6 +1010,50 @@ client.on('interactionCreate', async (interaction) => {
                 if (banLogChan) await banLogChan.send({ embeds: [banEmbed] });
                 return await interaction.editReply({ content: `✅ ดำเนินการแบน <@${targetId}> ระยะเวลา \`${durationStr}\` เรียบร้อย!` });
             }
+
+            // 🌟 บันทึกแบบฟอร์มสมัครทีมงาน -> ส่งเข้าห้องตรวจ
+            if (interaction.customId.startsWith('modal_staff_submit_')) {
+                await interaction.deferReply({ ephemeral: true });
+
+                const posIndex = interaction.customId.replace('modal_staff_submit_', '');
+                const config = client.staffApplyConfigs.get(interaction.guild.id) || [];
+                const targetPos = config[parseInt(posIndex)] || { label: 'ไม่ได้ระบุ', roleId: null };
+
+                const nickname = interaction.fields.getTextInputValue('st_nickname');
+                const age = interaction.fields.getTextInputValue('st_age');
+                const workTime = interaction.fields.getTextInputValue('st_worktime');
+                const workDays = interaction.fields.getTextInputValue('st_workdays');
+                const duration = interaction.fields.getTextInputValue('st_duration');
+
+                const logChan = interaction.guild.channels.cache.get(STAFF_LOG_CHANNEL_ID);
+
+                const embed = new EmbedBuilder()
+                    .setTitle(`📥 ใบสมัครทีมงานใหม่: ${interaction.user.username}`)
+                    .setColor(0x3498DB)
+                    .addFields(
+                        { name: '👤 ผู้สมัคร', value: `<@${interaction.user.id}> (ID: ${interaction.user.id})`, inline: false },
+                        { name: '💼 สมัครตำแหน่ง', value: targetPos.label, inline: true },
+                        { name: '1️⃣ ชื่อเล่น', value: nickname, inline: true },
+                        { name: '2️⃣ อายุ', value: age, inline: true },
+                        { name: '3️⃣ เวลาปฏิบัติงาน', value: workTime, inline: false },
+                        { name: '4️⃣ วันที่จะปฏิบัติงาน', value: workDays, inline: false },
+                        { name: '5️⃣ ระยะเวลาปฏิบัติงาน', value: duration, inline: false }
+                    )
+                    .setThumbnail(interaction.user.displayAvatarURL({ dynamic: true }))
+                    .setFooter({ text: 'สถานะ: รอการตรวจสอบ' })
+                    .setTimestamp();
+
+                const actionRow = new ActionRowBuilder().addComponents(
+                    new ButtonBuilder().setCustomId(`staff_pass_${interaction.user.id}`).setLabel('✅ อนุมัติ (Pass)').setStyle(ButtonStyle.Success),
+                    new ButtonBuilder().setCustomId(`staff_reject_${interaction.user.id}`).setLabel('❌ ไม่ผ่าน (Reject)').setStyle(ButtonStyle.Danger)
+                );
+
+                if (logChan) {
+                    await logChan.send({ embeds: [embed], components: [actionRow] });
+                }
+
+                return await interaction.editReply({ content: '✅ ส่งใบสมัครทีมงานเรียบร้อยแล้ว! กรุณารอทีมงานตรวจสอบข้อมูลครับ' });
+            }
         }
 
         if (interaction.isStringSelectMenu()) {
@@ -895,7 +1092,6 @@ client.on('interactionCreate', async (interaction) => {
                 }
             }
 
-            // 🟢 HANDLER: ตรวจจับการกดเลือก Dropdown ไม่จำกัดยศ
             if (interaction.customId.startsWith('select_unlimited_roles_')) {
                 await interaction.deferReply({ ephemeral: true });
 
@@ -904,14 +1100,12 @@ client.on('interactionCreate', async (interaction) => {
                 const allMenuRoleIds = interaction.component.options.map(opt => opt.value);
 
                 try {
-                    // ถอดยศที่ไม่ได้เลือกออก (เฉพาะยศที่มีอยู่ในเมนูนี้)
                     for (const roleId of allMenuRoleIds) {
                         if (!selectedRoleIds.includes(roleId) && member.roles.cache.has(roleId)) {
                             await member.roles.remove(roleId).catch(() => null);
                         }
                     }
 
-                    // เพิ่มยศที่ถูกเลือก
                     for (const roleId of selectedRoleIds) {
                         if (!member.roles.cache.has(roleId)) {
                             await member.roles.add(roleId).catch(() => null);
@@ -923,6 +1117,31 @@ client.on('interactionCreate', async (interaction) => {
                     console.error(error);
                     return await interaction.editReply({ content: '❌ เกิดข้อผิดพลาดในการปรับเปลี่ยนยศ' });
                 }
+            }
+
+            // 🌟 เมื่อเลือกตำแหน่งจาก Dropdown -> เปิด Modal กรอกใบสมัคร
+            if (interaction.customId === 'select_staff_position') {
+                const selectedPosIndex = interaction.values[0];
+
+                const modal = new ModalBuilder()
+                    .setCustomId(`modal_staff_submit_${selectedPosIndex}`)
+                    .setTitle('📝 แบบฟอร์มใบสมัครทีมงาน');
+
+                const nameInput = new TextInputBuilder().setCustomId('st_nickname').setLabel('1. ชื่อเล่น').setPlaceholder('เช่น นัท').setStyle(TextInputStyle.Short).setRequired(true);
+                const ageInput = new TextInputBuilder().setCustomId('st_age').setLabel('2. อายุ').setPlaceholder('เช่น 18 ปี').setStyle(TextInputStyle.Short).setRequired(true);
+                const timeInput = new TextInputBuilder().setCustomId('st_worktime').setLabel('3. เวลาปฏิบัติงาน').setPlaceholder('เช่น 08:30 - 16:30').setStyle(TextInputStyle.Short).setRequired(true);
+                const daysInput = new TextInputBuilder().setCustomId('st_workdays').setLabel('4. วันที่จะปฏิบัติงาน').setPlaceholder('เช่น จันทร์ - ศุกร์').setStyle(TextInputStyle.Short).setRequired(true);
+                const durInput = new TextInputBuilder().setCustomId('st_duration').setLabel('5. ระยะเวลาปฏิบัติงาน').setPlaceholder('เช่น 1 เดือน 7 วัน').setStyle(TextInputStyle.Short).setRequired(true);
+
+                modal.addComponents(
+                    new ActionRowBuilder().addComponents(nameInput),
+                    new ActionRowBuilder().addComponents(ageInput),
+                    new ActionRowBuilder().addComponents(timeInput),
+                    new ActionRowBuilder().addComponents(daysInput),
+                    new ActionRowBuilder().addComponents(durInput)
+                );
+
+                return await interaction.showModal(modal);
             }
         }
     } catch (err) {
