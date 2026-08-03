@@ -39,7 +39,6 @@ client.dotRoleConfigs = client.dotRoleConfigs || new Map();
 client.boostConfigs = client.boostConfigs || new Map();
 client.welcomeConfigs = client.welcomeConfigs || new Map();
 client.staffApplyConfigs = client.staffApplyConfigs || new Map(); // เก็บการตั้งค่าตำแหน่งสมัคร
-client.pendingStaffApps = client.pendingStaffApps || new Map();   // เก็บข้อมูลสมัครชั่วคราว
 
 // 🛠️ ฟังก์ชันแปลงข้อความที่มีตัวแปร {}
 function parseCustomTags(text, guild, member) {
@@ -257,7 +256,6 @@ const commands = [
                 .setDescription('ลิงก์รูปภาพ Banner (ถ้ามี)')
                 .setRequired(false)),
 
-    // 🌟 เพิ่มคำสั่งตั้งค่าระบบสมัครทีมงาน
     new SlashCommandBuilder()
         .setName('setup-staff-apply')
         .setDescription('ตั้งค่าและเปิดระบบสมัครทีมงาน')
@@ -834,7 +832,7 @@ client.on('interactionCreate', async (interaction) => {
                 
                 // ค้นหาตำแหน่งและ Role ID จาก Embed
                 const posField = originalEmbed.fields.find(f => f.name.includes('สมัครตำแหน่ง'));
-                const posName = posField ? posField.value : 'ทีมงาน';
+                const posName = posField ? posField.value.replace(/`/g, '').trim() : 'ทีมงาน';
                 
                 const config = client.staffApplyConfigs.get(interaction.guild.id) || [];
                 const matchedPos = config.find(p => p.label === posName);
@@ -862,7 +860,7 @@ client.on('interactionCreate', async (interaction) => {
 
                     await interaction.message.edit({ embeds: [updatedEmbed], components: [] });
 
-                    // แจ้งผู้สมัครด้วยข้อความที่เห็นแค่คนเดียวในห้องสมัคร
+                    // แจ้งผู้สมัครด้วยข้อความในห้องสมัคร
                     const applyChan = interaction.channel;
                     if (applyChan) {
                         await applyChan.send({
@@ -1011,13 +1009,13 @@ client.on('interactionCreate', async (interaction) => {
                 return await interaction.editReply({ content: `✅ ดำเนินการแบน <@${targetId}> ระยะเวลา \`${durationStr}\` เรียบร้อย!` });
             }
 
-            // 🌟 บันทึกแบบฟอร์มสมัครทีมงาน -> ส่งเข้าห้องตรวจ
+            // 🌟 บันทึกแบบฟอร์มสมัครทีมงาน -> ส่งเข้าห้องตรวจ (จัดเรียงเรียบร้อยสวยงาม)
             if (interaction.customId.startsWith('modal_staff_submit_')) {
                 await interaction.deferReply({ ephemeral: true });
 
-                const posIndex = interaction.customId.replace('modal_staff_submit_', '');
+                const posIndex = parseInt(interaction.customId.replace('modal_staff_submit_', ''));
                 const config = client.staffApplyConfigs.get(interaction.guild.id) || [];
-                const targetPos = config[parseInt(posIndex)] || { label: 'ไม่ได้ระบุ', roleId: null };
+                const targetPos = config[posIndex] || { label: 'ไม่ได้ระบุ', roleId: null };
 
                 const nickname = interaction.fields.getTextInputValue('st_nickname');
                 const age = interaction.fields.getTextInputValue('st_age');
@@ -1027,14 +1025,16 @@ client.on('interactionCreate', async (interaction) => {
 
                 const logChan = interaction.guild.channels.cache.get(STAFF_LOG_CHANNEL_ID);
 
+                // 🎨 Embed สวยๆ จัดระเบียบเว้นวรรคชัดเจน
                 const embed = new EmbedBuilder()
                     .setTitle(`📥 ใบสมัครทีมงานใหม่: ${interaction.user.username}`)
                     .setColor(0x3498DB)
                     .addFields(
-                        { name: '👤 ผู้สมัคร', value: `<@${interaction.user.id}> (ID: ${interaction.user.id})`, inline: false },
-                        { name: '💼 สมัครตำแหน่ง', value: targetPos.label, inline: true },
+                        { name: '👤 ผู้สมัคร', value: `<@${interaction.user.id}>\n\`(ID: ${interaction.user.id})\``, inline: false },
+                        { name: '💼 สมัครตำแหน่ง', value: `\` ${targetPos.label} \``, inline: false },
                         { name: '1️⃣ ชื่อเล่น', value: nickname, inline: true },
-                        { name: '2️⃣ อายุ', value: age, inline: true },
+                        { name: '2️⃣ อายุ', value: `${age} ปี`, inline: true },
+                        { name: '\u200B', value: '\u200B', inline: true },
                         { name: '3️⃣ เวลาปฏิบัติงาน', value: workTime, inline: false },
                         { name: '4️⃣ วันที่จะปฏิบัติงาน', value: workDays, inline: false },
                         { name: '5️⃣ ระยะเวลาปฏิบัติงาน', value: duration, inline: false }
@@ -1119,7 +1119,7 @@ client.on('interactionCreate', async (interaction) => {
                 }
             }
 
-            // 🌟 เมื่อเลือกตำแหน่งจาก Dropdown -> เปิด Modal กรอกใบสมัคร
+            // 🌟 เมื่อเลือกตำแหน่งจาก Dropdown -> เปิด Modal กรอกใบสมัครพร้อม Index ตำแหน่ง
             if (interaction.customId === 'select_staff_position') {
                 const selectedPosIndex = interaction.values[0];
 
@@ -1127,11 +1127,11 @@ client.on('interactionCreate', async (interaction) => {
                     .setCustomId(`modal_staff_submit_${selectedPosIndex}`)
                     .setTitle('📝 แบบฟอร์มใบสมัครทีมงาน');
 
-                const nameInput = new TextInputBuilder().setCustomId('st_nickname').setLabel('1. ชื่อเล่น').setPlaceholder('เช่น นัท').setStyle(TextInputStyle.Short).setRequired(true);
-                const ageInput = new TextInputBuilder().setCustomId('st_age').setLabel('2. อายุ').setPlaceholder('เช่น 18 ปี').setStyle(TextInputStyle.Short).setRequired(true);
-                const timeInput = new TextInputBuilder().setCustomId('st_worktime').setLabel('3. เวลาปฏิบัติงาน').setPlaceholder('เช่น 08:30 - 16:30').setStyle(TextInputStyle.Short).setRequired(true);
-                const daysInput = new TextInputBuilder().setCustomId('st_workdays').setLabel('4. วันที่จะปฏิบัติงาน').setPlaceholder('เช่น จันทร์ - ศุกร์').setStyle(TextInputStyle.Short).setRequired(true);
-                const durInput = new TextInputBuilder().setCustomId('st_duration').setLabel('5. ระยะเวลาปฏิบัติงาน').setPlaceholder('เช่น 1 เดือน 7 วัน').setStyle(TextInputStyle.Short).setRequired(true);
+                const nameInput = new TextInputBuilder().setCustomId('st_nickname').setLabel('1. ชื่อเล่น').setPlaceholder('เช่น แฮมสเตอร์').setStyle(TextInputStyle.Short).setRequired(true);
+                const ageInput = new TextInputBuilder().setCustomId('st_age').setLabel('2. อายุ').setPlaceholder('เช่น 19').setStyle(TextInputStyle.Short).setRequired(true);
+                const timeInput = new TextInputBuilder().setCustomId('st_worktime').setLabel('3. เวลาปฏิบัติงาน').setPlaceholder('เช่น 08:00 - 22:00').setStyle(TextInputStyle.Short).setRequired(true);
+                const daysInput = new TextInputBuilder().setCustomId('st_workdays').setLabel('4. วันที่จะปฏิบัติงาน').setPlaceholder('เช่น ทุกวัน').setStyle(TextInputStyle.Short).setRequired(true);
+                const durInput = new TextInputBuilder().setCustomId('st_duration').setLabel('5. ระยะเวลาปฏิบัติงาน').setPlaceholder('เช่น ตลอดไป').setStyle(TextInputStyle.Short).setRequired(true);
 
                 modal.addComponents(
                     new ActionRowBuilder().addComponents(nameInput),
