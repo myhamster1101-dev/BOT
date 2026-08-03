@@ -27,17 +27,16 @@ const client = new Client({
 
 const TOKEN = process.env.DISCORD_TOKEN;
 const CLIENT_ID = process.env.CLIENT_ID;
+const BLACKLIST_CHANNEL_ID = process.env.BLACKLIST_CHANNEL_ID;
+const REPORT_LOG_CHANNEL_ID = process.env.REPORT_LOG_CHANNEL_ID;
+const BAN_LOG_CHANNEL_ID = process.env.BAN_LOG_CHANNEL_ID;
+const BANNED_ROLE_ID = process.env.BANNED_ROLE_ID;
 
-// 🟢 Database จำลองใน Memory (ควรเปลี่ยนเป็น MongoDB หรือ SQL ในอนาคต)
 client.dotRoleConfigs = client.dotRoleConfigs || new Map();
 client.boostConfigs = client.boostConfigs || new Map();
 client.welcomeConfigs = client.welcomeConfigs || new Map();
-client.userBalances = client.userBalances || new Map();         // เก็บยอดเงินสมาชิก { userId: balance }
-client.shopItems = client.shopItems || new Map();               // เก็บสินค้ายศ { guildId: [{ roleId, price, description, category, stock }] }
-client.shopLogsConfig = client.shopLogsConfig || new Map();     // เก็บข้อมูลบัญชีและ Logs { topupLogId, shopLogId, accountName, truewallet, promptpay, qrCodeUrl }
-client.shopMessageConfigs = client.shopMessageConfigs || new Map(); // เก็บข้อมูลตำแหน่งหน้าร้านค้า { guildId: { channelId, messageId, title, description, bannerUrl, color } }
 
-// 🛠️ ฟังก์ชันแปลงข้อความที่มีตัวแปร Tag
+// 🛠️ ฟังก์ชันแปลงข้อความที่มีตัวแปร {}
 function parseCustomTags(text, guild, member) {
     if (!text) return '';
 
@@ -67,95 +66,8 @@ function parseCustomTags(text, guild, member) {
     return parsedText;
 }
 
-// ⚡ ฟังก์ชันสร้าง Components & Embed หน้าร้านค้า (อัปเดตหน้าตาใหม่ โชว์แค่ยอดจำแนกประเภท) และอัปเดตเรียลไทม์
-async function updateShopDisplay(guild) {
-    const config = client.shopMessageConfigs.get(guild.id);
-    if (!config) return false;
-
-    const channel = guild.channels.cache.get(config.channelId);
-    if (!channel || !channel.isTextBased()) return false;
-
-    const shopMsg = await channel.messages.fetch(config.messageId).catch(() => null);
-    if (!shopMsg) return false;
-
-    const guildItems = client.shopItems.get(guild.id) || [];
-
-    const shopEmbed = new EmbedBuilder()
-        .setTitle(parseCustomTags(config.title, guild, null))
-        .setColor(config.color || '#F1C40F')
-        .setDescription(parseCustomTags(config.description, guild, null))
-        .setTimestamp();
-
-    if (config.bannerUrl && config.bannerUrl.startsWith('http')) shopEmbed.setImage(config.bannerUrl);
-
-    // 🔄 ดึงรายการยศทั้งหมดที่มีการใส่ไว้ในระบบมาสร้างหน้าร้านค้าอัตโนมัติ
-    const shopSelect = new StringSelectMenuBuilder()
-        .setCustomId('select_buy_shop_role')
-        .setPlaceholder('🛒 เลือกยศที่คุณต้องการซื้อที่นี่...');
-
-    // 📊 ส่วนจำแนกประเภท และคำนวณจำนวนยศคงเหลือ
-    let decorateStockCount = 0; // ยศตกแต่ง
-    let otherStockCount = 0;    // ยศอื่นๆ
-    let validItemCount = 0;     // จำนวนรายการยศทั้งหมดใน Dropdown
-
-    if (guildItems.length > 0) {
-        guildItems.forEach((item) => {
-            const roleObj = guild.roles.cache.get(item.roleId);
-            // เช็กว่ายศยังมีอยู่ในดิส และ จำนวนคงเหลือ > 0
-            if (roleObj && item.stock > 0) {
-                validItemCount++;
-                
-                // คำนวณยอดคงเหลือแยกตามประเภท
-                if (item.category === 'ยศตกแต่ง') {
-                    decorateStockCount++; // นับจำนวน "รายการ" ที่พร้อมขาย
-                } else {
-                    otherStockCount++; // นับจำนวน "รายการ" ที่พร้อมขาย
-                }
-                
-                // ใส่ข้อมูลลง Dropdown: ชื่อยศ, ประเภท, ราคา, จำนวนคงเหลือ
-                shopSelect.addOptions(
-                    new StringSelectMenuOptionBuilder()
-                        .setLabel(`${roleObj.name} \vert{}${item.category}`) // แสดงชื่อยศ และ ประเภท
-                        .setValue(item.roleId)
-                        .setDescription(`💰 ราคา: ${item.price} บาท \vert{} 📦 คงเหลือ: ${item.stock} ชิ้น`) // แสดงราคา และ จำนวนคงเหลือ
-                );
-            }
-        });
-    }
-
-    let summaryText = '';
-    if (validItemCount === 0) {
-        summaryText = '⚠️ ยังไม่มีรายการยศในระบบที่พร้อมจำหน่าย (แอดมินใช้ `/add-shop-item` เพื่อใส่ยศและจำนวนเข้าในร้านค้าได้เลย)';
-    } else {
-        // [ใหม่] สรุปจำนวนยอดคงเหลือจำแนกตามประเภท (โชว์แค่ตรงนี้)
-        summaryText = `📊 **สรุปจำนวนรายการยศที่พร้อมจำหน่าย:**\n` +
-                      `🎨 **ยศตกแต่ง:** ${decorateStockCount} รายการ\n` +
-                      `⭐ **ยศอื่นๆ:** ${otherStockCount} รายการ`;
-    }
-
-    shopEmbed.addFields({ name: '📜 รายการยศที่มีจำหน่ายอัตโนมัติ', value: summaryText });
-
-    const components = [];
-
-    // แสดง Dropdown เลือกซื้อยศเฉพาะเมื่อมียศในร้านค้า
-    if (validItemCount > 0) {
-        components.push(new ActionRowBuilder().addComponents(shopSelect));
-    }
-
-    const btnRow = new ActionRowBuilder().addComponents(
-        new ButtonBuilder().setCustomId('btn_topup_truemoney').setLabel('🧧 เติมเงิน TrueMoney').setStyle(ButtonStyle.Success),
-        new ButtonBuilder().setCustomId('btn_topup_promptpay').setLabel('📲 เติมเงิน PromptPay / QR Code').setStyle(ButtonStyle.Primary),
-        new ButtonBuilder().setCustomId('btn_check_balance').setLabel('💰 เช็กยอดเงินคงเหลือ').setStyle(ButtonStyle.Secondary)
-    );
-    components.push(btnRow);
-
-    await shopMsg.edit({ embeds: [shopEmbed], components }).catch(() => null);
-    return true;
-}
-
-// 📌 1. Slash Commands Definition
+// 1. Slash Commands Definition
 const commands = [
-    // --- ระบบเดิม ---
     new SlashCommandBuilder()
         .setName('setup-ticket')
         .setDescription('ตั้งค่าและสร้างปุ่มส่งเรื่องร้องเรียน')
@@ -175,37 +87,85 @@ const commands = [
         .setName('setup-dot-role')
         .setDescription('ตั้งค่าห้องและยศสำหรับระบบพิมพ์จุด (.) รับยศ')
         .setDefaultMemberPermissions(PermissionFlagsBits.Administrator)
-        .addChannelOption(opt => opt.setName('channel').setDescription('เลือกห้องที่ต้องการให้พิมพ์จุด').setRequired(true))
-        .addRoleOption(opt => opt.setName('role').setDescription('เลือกยศที่จะให้เมื่อพิมพ์จุด').setRequired(true))
-        .addStringOption(opt => opt.setName('banner_url').setDescription('ใส่ลิงก์รูปภาพ Banner ใน Embed').setRequired(false))
-        .addStringOption(opt => opt.setName('color').setDescription('โค้ดสี HEX เช่น #2ECC71').setRequired(false)),
+        .addChannelOption(option =>
+            option.setName('channel')
+                .setDescription('เลือกห้องที่ต้องการให้พิมพ์จุด')
+                .setRequired(true))
+        .addRoleOption(option =>
+            option.setName('role')
+                .setDescription('เลือกยศที่จะให้เมื่อพิมพ์จุด')
+                .setRequired(true))
+        .addStringOption(option =>
+            option.setName('banner_url')
+                .setDescription('ใส่ลิงก์รูปภาพ Banner ใน Embed (ใส่ - หรือเว้นว่างถ้าไม่มี)')
+                .setRequired(false))
+        .addStringOption(option =>
+            option.setName('color')
+                .setDescription('โค้ดสี HEX เช่น #2ECC71 หรือ GREEN')
+                .setRequired(false)),
 
     new SlashCommandBuilder()
         .setName('setup-boost')
-        .setDescription('ตั้งค่าระบบขอบคุณคน Boost')
+        .setDescription('ตั้งค่าระบบขอบคุณคน Boost (ใช้คำสั่ง {} อัตโนมัติได้)')
         .setDefaultMemberPermissions(PermissionFlagsBits.Administrator)
-        .addChannelOption(opt => opt.setName('channel').setDescription('เลือกห้องขอบคุณคน Boost').setRequired(true))
-        .addStringOption(opt => opt.setName('title').setDescription('หัวข้อ Embed').setRequired(false))
-        .addStringOption(opt => opt.setName('description').setDescription('ข้อความ Embed').setRequired(false))
-        .addStringOption(opt => opt.setName('content_message').setDescription('ข้อความนอก Embed').setRequired(false))
-        .addStringOption(opt => opt.setName('banner_url').setDescription('ลิงก์รูปภาพ Banner').setRequired(false))
-        .addStringOption(opt => opt.setName('color').setDescription('โค้ดสี HEX').setRequired(false)),
+        .addChannelOption(option =>
+            option.setName('channel')
+                .setDescription('เลือกห้องที่ต้องการให้ส่งข้อความขอบคุณคน Boost')
+                .setRequired(true))
+        .addStringOption(option =>
+            option.setName('title')
+                .setDescription('หัวข้อ Embed (ใช้ {user}, {guild} ได้)')
+                .setRequired(false))
+        .addStringOption(option =>
+            option.setName('description')
+                .setDescription('ข้อความ Embed (ใช้ {user}, {#ห้อง}, {@ยศ}, {guild}, {boosts} ได้)')
+                .setRequired(false))
+        .addStringOption(option =>
+            option.setName('content_message')
+                .setDescription('ข้อความแจ้งเตือนนอก Embed (ใช้ {user}, {@ยศ} แท็กคนได้หมด)')
+                .setRequired(false))
+        .addStringOption(option =>
+            option.setName('banner_url')
+                .setDescription('ลิงก์รูปภาพ Banner ด้านล่าง Embed')
+                .setRequired(false))
+        .addStringOption(option =>
+            option.setName('color')
+                .setDescription('โค้ดสี HEX เช่น #F47FFF หรือ PINK')
+                .setRequired(false)),
 
     new SlashCommandBuilder()
         .setName('test-boost')
-        .setDescription('ทดสอบส่งข้อความแจ้งเตือน Boost จำลอง')
+        .setDescription('ทดสอบส่งข้อความแจ้งเตือน Boost จำลองไปยังห้องที่ตั้งค่าไว้')
         .setDefaultMemberPermissions(PermissionFlagsBits.Administrator),
 
     new SlashCommandBuilder()
         .setName('setup-welcome')
         .setDescription('ตั้งค่าระบบต้อนรับสมาชิกใหม่ (Welcome)')
         .setDefaultMemberPermissions(PermissionFlagsBits.Administrator)
-        .addChannelOption(opt => opt.setName('channel').setDescription('เลือกห้องต้อนรับ').setRequired(true))
-        .addStringOption(opt => opt.setName('title').setDescription('หัวข้อ Embed').setRequired(false))
-        .addStringOption(opt => opt.setName('description').setDescription('ข้อความ Embed').setRequired(false))
-        .addStringOption(opt => opt.setName('content_message').setDescription('ข้อความนอก Embed').setRequired(false))
-        .addStringOption(opt => opt.setName('banner_url').setDescription('ลิงก์รูปภาพ Banner').setRequired(false))
-        .addStringOption(opt => opt.setName('color').setDescription('โค้ดสี HEX').setRequired(false)),
+        .addChannelOption(option =>
+            option.setName('channel')
+                .setDescription('เลือกห้องสำหรับส่งข้อความต้อนรับ')
+                .setRequired(true))
+        .addStringOption(option =>
+            option.setName('title')
+                .setDescription('หัวข้อ Embed (ใช้ {user}, {guild}, {username} ได้)')
+                .setRequired(false))
+        .addStringOption(option =>
+            option.setName('description')
+                .setDescription('ข้อความ Embed (ใช้ {user}, {guild}, {memberCount}, {#ห้อง}, {@ยศ} ได้)')
+                .setRequired(false))
+        .addStringOption(option =>
+            option.setName('content_message')
+                .setDescription('ข้อความข้อความนอก Embed (เช่น แท็กคน {user})')
+                .setRequired(false))
+        .addStringOption(option =>
+            option.setName('banner_url')
+                .setDescription('ลิงก์รูปภาพ Banner ด้านล่าง Embed')
+                .setRequired(false))
+        .addStringOption(option =>
+            option.setName('color')
+                .setDescription('โค้ดสี HEX เช่น #5865F2 หรือ GREEN')
+                .setRequired(false)),
 
     new SlashCommandBuilder()
         .setName('test-welcome')
@@ -214,95 +174,84 @@ const commands = [
 
     new SlashCommandBuilder()
         .setName('setup_buttons')
-        .setDescription('เพิ่มปุ่มกดรับยศใส่ข้อความเดิม')
+        .setDescription('เพิ่มปุ่มกดรับยศใส่ข้อความเดิม (ส่งจากห้องไหนก็ได้)')
         .setDefaultMemberPermissions(PermissionFlagsBits.Administrator)
-        .addChannelOption(opt => opt.setName('channel').setDescription('เลือกห้อง').setRequired(true))
-        .addStringOption(opt => opt.setName('message_id').setDescription('ID ข้อความเดิม').setRequired(true))
-        .addRoleOption(opt => opt.setName('role1').setDescription('ยศที่ 1').setRequired(true))
-        .addStringOption(opt => opt.setName('label1').setDescription('ข้อความบนปุ่ม 1').setRequired(true))
-        .addStringOption(opt => opt.setName('style1').setDescription('สีปุ่ม 1').setRequired(false)
+        .addChannelOption(option =>
+            option.setName('channel')
+                .setDescription('เลือกห้องที่ข้อความนั้นอยู่')
+                .setRequired(true))
+        .addStringOption(option =>
+            option.setName('message_id')
+                .setDescription('ID ของข้อความเดิมที่ต้องการเพิ่มปุ่ม')
+                .setRequired(true))
+        .addRoleOption(option =>
+            option.setName('role1')
+                .setDescription('ยศที่ 1')
+                .setRequired(true))
+        .addStringOption(option =>
+            option.setName('label1')
+                .setDescription('ข้อความบนปุ่มที่ 1 (เช่น "รับยศสมาชิก")')
+                .setRequired(true))
+        .addStringOption(option =>
+            option.setName('style1')
+                .setDescription('สีปุ่มที่ 1')
+                .setRequired(false)
+                .addChoices(
+                    { name: '🔵 สีน้ำเงิน (Primary)', value: 'Primary' },
+                    { name: 'เพลน/เทา (Secondary)', value: 'Secondary' },
+                    { name: '🟢 สีเขียว (Success)', value: 'Success' },
+                    { name: '🔴 สีแดง (Danger)', value: 'Danger' }
+                ))
+        .addStringOption(option =>
+            option.setName('emoji1')
+                .setDescription('Emoji ปุ่มที่ 1 (เช่น ✨ หรือ 👑)')
+                .setRequired(false))
+        .addRoleOption(option => option.setName('role2').setDescription('ยศที่ 2').setRequired(false))
+        .addStringOption(option => option.setName('label2').setDescription('ข้อความบนปุ่มที่ 2').setRequired(false))
+        .addStringOption(option => option.setName('style2').setDescription('สีปุ่มที่ 2').setRequired(false)
             .addChoices(
                 { name: '🔵 สีน้ำเงิน', value: 'Primary' },
                 { name: 'เพลน/เทา', value: 'Secondary' },
                 { name: '🟢 สีเขียว', value: 'Success' },
                 { name: '🔴 สีแดง', value: 'Danger' }
             ))
-        .addStringOption(opt => opt.setName('emoji1').setDescription('Emoji ปุ่ม 1').setRequired(false))
-        .addRoleOption(opt => opt.setName('role2').setDescription('ยศที่ 2').setRequired(false))
-        .addStringOption(opt => opt.setName('label2').setDescription('ข้อความบนปุ่ม 2').setRequired(false))
-        .addStringOption(opt => opt.setName('style2').setDescription('สีปุ่ม 2').setRequired(false)
+        .addStringOption(option => option.setName('emoji2').setDescription('Emoji ปุ่มที่ 2').setRequired(false))
+        .addRoleOption(option => option.setName('role3').setDescription('ยศที่ 3').setRequired(false))
+        .addStringOption(option => option.setName('label3').setDescription('ข้อความบนปุ่มที่ 3').setRequired(false))
+        .addStringOption(option => option.setName('style3').setDescription('สีปุ่มที่ 3').setRequired(false)
             .addChoices(
                 { name: '🔵 สีน้ำเงิน', value: 'Primary' },
                 { name: 'เพลน/เทา', value: 'Secondary' },
                 { name: '🟢 สีเขียว', value: 'Success' },
                 { name: '🔴 สีแดง', value: 'Danger' }
             ))
-        .addStringOption(opt => opt.setName('emoji2').setDescription('Emoji ปุ่ม 2').setRequired(false))
-        .addRoleOption(opt => opt.setName('role3').setDescription('ยศที่ 3').setRequired(false))
-        .addStringOption(opt => opt.setName('label3').setDescription('ข้อความบนปุ่ม 3').setRequired(false))
-        .addStringOption(opt => opt.setName('style3').setDescription('สีปุ่ม 3').setRequired(false)
-            .addChoices(
-                { name: '🔵 สีน้ำเงิน', value: 'Primary' },
-                { name: 'เพลน/เทา', value: 'Secondary' },
-                { name: '🟢 สีเขียว', value: 'Success' },
-                { name: '🔴 สีแดง', value: 'Danger' }
-            ))
-        .addStringOption(opt => opt.setName('emoji3').setDescription('Emoji ปุ่ม 3').setRequired(false))
-        .addStringOption(opt => opt.setName('image_url').setDescription('ลิงก์รูปภาพ Banner').setRequired(false)),
+        .addStringOption(option => option.setName('emoji3').setDescription('Emoji ปุ่มที่ 3').setRequired(false))
+        .addStringOption(option =>
+            option.setName('image_url')
+                .setDescription('ใส่ลิงก์รูปภาพ Banner ใน Embed (ถ้ามี)')
+                .setRequired(false)),
 
+    // 🚀 เพิ่มระบบ Dropdown ไม่จำกัดยศ (ออโต้แบ่งกลุ่ม 25 ยศ/แถว)
     new SlashCommandBuilder()
         .setName('setup_dropdown')
         .setDescription('เพิ่ม Dropdown เลือกยศแบบไม่จำกัดใส่ข้อความเดิม')
         .setDefaultMemberPermissions(PermissionFlagsBits.Administrator)
-        .addStringOption(opt => opt.setName('message_id').setDescription('ID ของข้อความเดิมที่ต้องการใส่ Dropdown').setRequired(true))
-        .addStringOption(opt => opt.setName('role_ids').setDescription('ใส่ ID ของยศ คั่นด้วยเครื่องหมายจุลภาค (เช่น 12345,67890)').setRequired(true))
-        .addStringOption(opt => opt.setName('placeholder').setDescription('ข้อความตัวอย่างบน Dropdown').setRequired(false))
-        .addStringOption(opt => opt.setName('image_url').setDescription('ลิงก์รูปภาพ Banner').setRequired(false)),
-
-    // --- ระบบร้านค้าขายยศ & เติมเงิน ---
-    // [ปรับปรุง] เพิ่มตัวเลือกให้ใส่ "ประเภท" และ "จำนวนคงเหลือ"
-    new SlashCommandBuilder()
-        .setName('add-shop-item')
-        .setDescription('เพิ่ม/แก้ไขยศขายในร้านค้า (สินค้าอัปเดตหน้าร้านทันที)')
-        .setDefaultMemberPermissions(PermissionFlagsBits.Administrator)
-        .addRoleOption(opt => opt.setName('role').setDescription('เลือกยศที่ต้องการวางขาย').setRequired(true))
-        .addIntegerOption(opt => opt.setName('price').setDescription('กำหนดราคา (บาท)').setRequired(true))
-        .addIntegerOption(opt => opt.setName('stock').setDescription('จำนวนคงเหลือในคลัง (ถ้าต้องการให้จำกัดจำนวน)').setRequired(false))
-        .addStringOption(opt => opt.setName('category').setDescription('จำแนกประเภท (ยศตกแต่ง หรือ ยศอื่นๆ)')
-            .setRequired(false)
-            .addChoices(
-                { name: '🎨 ยศตกแต่ง', value: 'ยศตกแต่ง' },
-                { name: '⭐ ยศอื่นๆ', value: 'ยศอื่นๆ' }
-            ))
-        .addStringOption(opt => opt.setName('description').setDescription('คำอธิบายเพิ่มเติมเกี่ยวกับยศนี้').setRequired(false)),
-
-    new SlashCommandBuilder()
-        .setName('setup-shop-logs')
-        .setDescription('ตั้งค่าห้อง Logs, ชื่อบัญชีรับเงิน, Wallet, PromptPay และรูป QR Code')
-        .setDefaultMemberPermissions(PermissionFlagsBits.Administrator)
-        .addChannelOption(opt => opt.setName('topup_log').setDescription('ห้องแจ้งเตือนประวัติเติมเงิน/แนบสลิป').setRequired(true))
-        .addChannelOption(opt => opt.setName('shop_log').setDescription('ห้องแจ้งเตือนประวัติซื้อขายยศ').setRequired(true))
-        .addStringOption(opt => opt.setName('account_name').setDescription('ชื่อบัญชีผู้รับเงิน (เช่น นาย สมชาย ใจดี)').setRequired(false))
-        .addStringOption(opt => opt.setName('truewallet').setDescription('เบอร์ TrueMoney Wallet').setRequired(false))
-        .addStringOption(opt => opt.setName('promptpay').setDescription('เบอร์ พร้อมเพย์ / เลขบัญชีธนาคาร').setRequired(false))
-        .addStringOption(opt => opt.setName('qr_code_url').setDescription('ลิงก์รูปภาพ QR Code พร้อมเพย์').setRequired(false)),
-
-    new SlashCommandBuilder()
-        .setName('setup-shop')
-        .setDescription('ตั้งค่าและส่งหน้าร้านค้าขายยศไปยังห้องที่ระบุ')
-        .setDefaultMemberPermissions(PermissionFlagsBits.Administrator)
-        .addChannelOption(opt => opt.setName('channel').setDescription('เลือกห้องที่ต้องการส่งหน้าร้านค้า').setRequired(true))
-        .addStringOption(opt => opt.setName('title').setDescription('หัวข้อ Embed หน้าร้านค้า').setRequired(false))
-        .addStringOption(opt => opt.setName('description').setDescription('คำอธิบายหน้าร้านค้า (รองรับแท็ก {user})').setRequired(false))
-        .addStringOption(opt => opt.setName('banner_url').setDescription('ลิงก์ Banner รูปภาพ').setRequired(false))
-        .addStringOption(opt => opt.setName('color').setDescription('โค้ดสี HEX เช่น #F1C40F').setRequired(false)),
-
-    // --- ระบบเสกเงินสำหรับแอดมิน ---
-    new SlashCommandBuilder()
-        .setName('setup-admin-give-money')
-        .setDescription('สร้างปุ่มแผงควบคุมเสกเงินลงในห้องแอดมิน')
-        .setDefaultMemberPermissions(PermissionFlagsBits.Administrator)
-        .addChannelOption(opt => opt.setName('channel').setDescription('เลือกห้องแอดมินสำหรับวางปุ่มเสกเงิน').setRequired(true))
+        .addStringOption(option =>
+            option.setName('message_id')
+                .setDescription('ID ของข้อความเดิมที่ต้องการใส่ Dropdown')
+                .setRequired(true))
+        .addStringOption(option =>
+            option.setName('role_ids')
+                .setDescription('ใส่ ID ของยศ คั่นด้วยเครื่องหมายจุลภาค (เช่น 1234567,8901234,5678901)')
+                .setRequired(true))
+        .addStringOption(option =>
+            option.setName('placeholder')
+                .setDescription('ข้อความตัวอย่างบน Dropdown')
+                .setRequired(false))
+        .addStringOption(option =>
+            option.setName('image_url')
+                .setDescription('ลิงก์รูปภาพ Banner (ถ้ามี)')
+                .setRequired(false)),
 ].map(command => command.toJSON());
 
 const rest = new REST({ version: '10' }).setToken(TOKEN);
@@ -335,13 +284,14 @@ function createSetupModal(customId, title, defaultTitle, defaultDesc, defaultBtn
     return modal;
 }
 
-// 📌 2. Interaction Listener
+// 2. Interaction Listener
 client.on('interactionCreate', async (interaction) => {
     try {
         if (interaction.isChatInputCommand()) {
 
             if (interaction.commandName === 'setup-dot-role') {
                 await interaction.deferReply({ ephemeral: true });
+
                 const targetChannel = interaction.options.getChannel('channel');
                 const targetRole = interaction.options.getRole('role');
                 const bannerUrl = interaction.options.getString('banner_url') || null;
@@ -364,96 +314,174 @@ client.on('interactionCreate', async (interaction) => {
 
             if (interaction.commandName === 'setup-boost') {
                 await interaction.deferReply({ ephemeral: true });
+
                 const targetChannel = interaction.options.getChannel('channel');
                 const title = interaction.options.getString('title') || '🚀 ขอบคุณสำหรับการ Server Boost!';
-                const description = interaction.options.getString('description') || '💖 ขอบคุณคุณ {user} มากๆ นะครับที่ช่วยสนับสนุนเซิร์ฟเวอร์ **{guild}**!';
-                const contentMessage = interaction.options.getString('content_message') || '🎉 **NEW BOOST!** ขอบคุณ {user} มากๆ ครับ!';
+                const description = interaction.options.getString('description') || '💖 ขอบคุณคุณ {user} มากๆ นะครับที่ช่วยสนับสนุนเซิร์ฟเวอร์ **{guild}**!\n\nแวะไปพูดคุยกับเพื่อนๆ ได้ที่ห้อง {#พูดคุย-ทั่วไป} หรือดูสิทธิ์พิเศษที่ยศ {@Booster} ได้เลย!';
+                const contentMessage = interaction.options.getString('content_message') || '🎉 **NEW BOOST!** ขอบคุณ {user} มากๆ ครับ! 🚀✨';
                 const bannerUrl = interaction.options.getString('banner_url') || null;
                 const color = interaction.options.getString('color') || '#F47FFF';
 
                 client.boostConfigs.set(interaction.guild.id, {
-                    channelId: targetChannel.id, title, description, contentMessage, bannerUrl, color
+                    channelId: targetChannel.id,
+                    title,
+                    description,
+                    contentMessage,
+                    bannerUrl,
+                    color
                 });
 
-                return await interaction.editReply({ content: `✅ ตั้งค่าระบบ Boost ไว้ที่ห้อง <#${targetChannel.id}> เรียบร้อยครับ!` });
+                const previewEmbed = new EmbedBuilder()
+                    .setTitle('⚙️ ตั้งค่าระบบแจ้งเตือน Boost เรียบร้อย!')
+                    .setColor(0x2ECC71)
+                    .setDescription(`ตั้งค่าการแจ้งเตือนไว้ที่ห้อง <#${targetChannel.id}> เรียบร้อยครับ!\n\n💡 **คุณสามารถพิมพ์ `/test-boost` เพื่อทดสอบระบบได้ทันที!**`)
+                    .setTimestamp();
+
+                return await interaction.editReply({ embeds: [previewEmbed] });
             }
 
             if (interaction.commandName === 'test-boost') {
                 await interaction.deferReply({ ephemeral: true });
+
                 const boostConfig = client.boostConfigs.get(interaction.guild.id) || {
                     channelId: interaction.channel.id,
                     title: '🚀 ขอบคุณสำหรับการ Server Boost!',
-                    description: '💖 ขอบคุณคุณ {user} มากๆ นะครับที่ช่วยสนับสนุนเซิร์ฟเวอร์ **{guild}**!',
-                    contentMessage: '🎉 **TEST BOOST!** ขอบคุณ {user} มากๆ ครับ!',
-                    bannerUrl: null, color: '#F47FFF'
+                    description: '💖 ขอบคุณคุณ {user} มากๆ นะครับที่ช่วยสนับสนุนเซิร์ฟเวอร์ **{guild}**!\n\nแวะไปพูดคุยกับเพื่อนๆ ได้ที่ห้อง {#พูดคุย-ทั่วไป} หรือดูสิทธิ์พิเศษที่ยศ {@Booster} ได้เลย!',
+                    contentMessage: '🎉 **TEST BOOST!** ขอบคุณ {user} มากๆ ครับ! 🚀✨',
+                    bannerUrl: null,
+                    color: '#F47FFF'
                 };
 
                 const targetChan = interaction.guild.channels.cache.get(boostConfig.channelId) || interaction.channel;
+
+                const formattedTitle = parseCustomTags(boostConfig.title, interaction.guild, interaction.member);
+                const formattedDesc = parseCustomTags(boostConfig.description, interaction.guild, interaction.member);
+                const formattedContent = parseCustomTags(boostConfig.contentMessage, interaction.guild, interaction.member);
+
                 const testEmbed = new EmbedBuilder()
-                    .setTitle(parseCustomTags(boostConfig.title, interaction.guild, interaction.member))
+                    .setTitle(formattedTitle)
                     .setColor(boostConfig.color || '#F47FFF')
-                    .setDescription(parseCustomTags(boostConfig.description, interaction.guild, interaction.member))
+                    .setDescription(formattedDesc)
+                    .addFields(
+                        { name: '👤 ผู้สนับสนุน (Booster)', value: `<@${interaction.user.id}>`, inline: true },
+                        { name: '💎 ยอด Boost รวม', value: `\`${interaction.guild.premiumSubscriptionCount || 0}\` บูสต์`, inline: true },
+                        { name: '⭐ Server Level', value: `\`Level ${interaction.guild.premiumTier}\``, inline: true }
+                    )
                     .setThumbnail(interaction.user.displayAvatarURL({ dynamic: true }))
+                    .setFooter({ text: `${interaction.guild.name} • (ทดสอบระบบ Boost) 💖` })
                     .setTimestamp();
 
-                if (boostConfig.bannerUrl) testEmbed.setImage(boostConfig.bannerUrl);
+                if (boostConfig.bannerUrl && boostConfig.bannerUrl.startsWith('http')) {
+                    testEmbed.setImage(boostConfig.bannerUrl);
+                }
 
-                await targetChan.send({ content: parseCustomTags(boostConfig.contentMessage, interaction.guild, interaction.member), embeds: [testEmbed] }).catch(() => null);
-                return await interaction.editReply({ content: `✅ ส่งข้อความทดสอบไปที่ห้อง <#${targetChan.id}> เรียบร้อย!` });
+                await targetChan.send({
+                    content: `⚠️ **[ข้อความทดสอบระบบ BOOST]**\n${formattedContent}`,
+                    embeds: [testEmbed]
+                }).catch(() => null);
+
+                return await interaction.editReply({ 
+                    content: `✅ ส่งข้อความทดสอบระบบ Boost ไปที่ห้อง <#${targetChan.id}> เรียบร้อยแล้วครับ!`
+                });
             }
 
             if (interaction.commandName === 'setup-welcome') {
                 await interaction.deferReply({ ephemeral: true });
+
                 const targetChannel = interaction.options.getChannel('channel');
                 const title = interaction.options.getString('title') || '🎉 ยินดีต้อนรับสู่ {guild}!';
-                const description = interaction.options.getString('description') || '👋 ยินดีต้อนรับคุณ {user} เข้าสู่เซิร์ฟเวอร์ **{guild}** ครับ!';
+                const description = interaction.options.getString('description') || '👋 ยินดีต้อนรับคุณ {user} เข้าสู่เซิร์ฟเวอร์ **{guild}** ครับ!\n\nขณะนี้เซิร์ฟเวอร์ของเรามีสมาชิกทั้งหมด **{memberCount}** คนแล้ว ✨\nขอให้สนุกกับการอยู่ร่วมกันนะครับ!';
                 const contentMessage = interaction.options.getString('content_message') || '✨ ยินดีต้อนรับ {user} สู่เซิร์ฟเวอร์ของเรา!';
                 const bannerUrl = interaction.options.getString('banner_url') || null;
                 const color = interaction.options.getString('color') || '#5865F2';
 
                 client.welcomeConfigs.set(interaction.guild.id, {
-                    channelId: targetChannel.id, title, description, contentMessage, bannerUrl, color
+                    channelId: targetChannel.id,
+                    title,
+                    description,
+                    contentMessage,
+                    bannerUrl,
+                    color
                 });
 
-                return await interaction.editReply({ content: `✅ ตั้งค่าระบบต้อนรับไว้ที่ห้อง <#${targetChannel.id}> เรียบร้อยครับ!` });
+                const resultEmbed = new EmbedBuilder()
+                    .setTitle('⚙️ ตั้งค่าระบบต้อนรับ (Welcome) เรียบร้อย!')
+                    .setColor(0x2ECC71)
+                    .setDescription(`ตั้งค่าห้องต้อนรับไปที่ <#${targetChannel.id}> เรียบร้อยครับ!\n\n💡 **พิมพ์ `/test-welcome` เพื่อทดสอบข้อความต้อนรับได้ทันที!**`)
+                    .setTimestamp();
+
+                return await interaction.editReply({ embeds: [resultEmbed] });
             }
 
             if (interaction.commandName === 'test-welcome') {
                 await interaction.deferReply({ ephemeral: true });
+
                 const welcomeConfig = client.welcomeConfigs.get(interaction.guild.id) || {
                     channelId: interaction.channel.id,
                     title: '🎉 ยินดีต้อนรับสู่ {guild}!',
-                    description: '👋 ยินดีต้อนรับคุณ {user} เข้าสู่เซิร์ฟเวอร์ **{guild}** ครับ!',
-                    contentMessage: '✨ ยินดีต้อนรับ {user} สู่เซิร์ฟเวอร์ของเรา!';
-                    bannerUrl: null, color: '#5865F2'
+                    description: '👋 ยินดีต้อนรับคุณ {user} เข้าสู่เซิร์ฟเวอร์ **{guild}** ครับ!\n\nขณะนี้เซิร์ฟเวอร์ของเรามีสมาชิกทั้งหมด **{memberCount}** คนแล้ว ✨\nขอให้สนุกกับการอยู่ร่วมกันนะครับ!',
+                    contentMessage: '✨ ยินดีต้อนรับ {user} สู่เซิร์ฟเวอร์ของเรา!',
+                    bannerUrl: null,
+                    color: '#5865F2'
                 };
 
                 const targetChan = interaction.guild.channels.cache.get(welcomeConfig.channelId) || interaction.channel;
+
+                const formattedTitle = parseCustomTags(welcomeConfig.title, interaction.guild, interaction.member);
+                const formattedDesc = parseCustomTags(welcomeConfig.description, interaction.guild, interaction.member);
+                const formattedContent = parseCustomTags(welcomeConfig.contentMessage, interaction.guild, interaction.member);
+
                 const testEmbed = new EmbedBuilder()
-                    .setTitle(parseCustomTags(welcomeConfig.title, interaction.guild, interaction.member))
+                    .setTitle(formattedTitle)
                     .setColor(welcomeConfig.color || '#5865F2')
-                    .setDescription(parseCustomTags(welcomeConfig.description, interaction.guild, interaction.member))
+                    .setDescription(formattedDesc)
+                    .addFields(
+                        { name: '👤 สมาชิกใหม่', value: `<@${interaction.user.id}>`, inline: true },
+                        { name: '📊 ลำดับสมาชิก', value: `คนที่ \`${interaction.guild.memberCount}\``, inline: true }
+                    )
                     .setThumbnail(interaction.user.displayAvatarURL({ dynamic: true }))
+                    .setFooter({ text: `${interaction.guild.name} • (ทดสอบระบบ Welcome) 🎉` })
                     .setTimestamp();
 
-                if (welcomeConfig.bannerUrl) testEmbed.setImage(welcomeConfig.bannerUrl);
+                if (welcomeConfig.bannerUrl && welcomeConfig.bannerUrl.startsWith('http')) {
+                    testEmbed.setImage(welcomeConfig.bannerUrl);
+                }
 
-                await targetChan.send({ content: parseCustomTags(welcomeConfig.contentMessage, interaction.guild, interaction.member), embeds: [testEmbed] }).catch(() => null);
-                return await interaction.editReply({ content: `✅ ส่งข้อความทดสอบไปที่ห้อง <#${targetChan.id}> เรียบร้อย!` });
+                await targetChan.send({
+                    content: `⚠️ **[ข้อความทดสอบระบบ WELCOME]**\n${formattedContent}`,
+                    embeds: [testEmbed]
+                }).catch(() => null);
+
+                return await interaction.editReply({ 
+                    content: `✅ ส่งข้อความทดสอบระบบ Welcome ไปที่ห้อง <#${targetChan.id}> เรียบร้อยแล้วครับ!`
+                });
             }
 
             if (interaction.commandName === 'setup_buttons') {
                 await interaction.deferReply({ ephemeral: true });
+
                 const targetChannel = interaction.options.getChannel('channel');
                 const messageId = interaction.options.getString('message_id').trim();
                 const imageUrl = interaction.options.getString('image_url')?.trim();
 
-                let targetMessage = await targetChannel.messages.fetch(messageId).catch(() => null);
-                if (!targetMessage) return await interaction.editReply({ content: '❌ ไม่พบข้อความ ID ดังกล่าว' });
+                let targetMessage;
+                try {
+                    targetMessage = await targetChannel.messages.fetch(messageId);
+                } catch (err) {
+                    return await interaction.editReply({ 
+                        content: `❌ ไม่พบข้อความ ID: \`${messageId}\` ในห้อง <#${targetChannel.id}> กรุณาตรวจสอบ ID และสิทธิ์บอท` 
+                    });
+                }
 
                 const row = new ActionRowBuilder();
                 let buttonCount = 0;
-                const styleMap = { 'Primary': ButtonStyle.Primary, 'Secondary': ButtonStyle.Secondary, 'Success': ButtonStyle.Success, 'Danger': ButtonStyle.Danger };
+
+                const styleMap = {
+                    'Primary': ButtonStyle.Primary,
+                    'Secondary': ButtonStyle.Secondary,
+                    'Success': ButtonStyle.Success,
+                    'Danger': ButtonStyle.Danger
+                };
 
                 for (let i = 1; i <= 3; i++) {
                     const role = interaction.options.getRole(`role${i}`);
@@ -462,40 +490,74 @@ client.on('interactionCreate', async (interaction) => {
                     const emoji = interaction.options.getString(`emoji${i}`);
 
                     if (role && label) {
-                        const btn = new ButtonBuilder().setCustomId(`btn_toggle_role_${role.id}`).setLabel(label).setStyle(styleMap[styleStr]);
+                        const btn = new ButtonBuilder()
+                            .setCustomId(`btn_toggle_role_${role.id}`)
+                            .setLabel(label)
+                            .setStyle(styleMap[styleStr] || ButtonStyle.Primary);
+
                         if (emoji) btn.setEmoji(emoji);
+
                         row.addComponents(btn);
                         buttonCount++;
                     }
                 }
 
+                if (buttonCount === 0) {
+                    return await interaction.editReply({ content: '❌ คุณต้องระบุยศและข้อความปุ่มอย่างน้อย 1 ชุด!' });
+                }
+
                 let embedsToUse = [...(targetMessage.embeds || [])];
                 if (imageUrl && imageUrl.startsWith('http')) {
-                    const newEmbed = embedsToUse.length > 0 ? EmbedBuilder.from(embedsToUse[0]).setImage(imageUrl) : new EmbedBuilder().setImage(imageUrl);
-                    embedsToUse[0] = newEmbed;
+                    if (embedsToUse.length > 0) {
+                        const newEmbed = EmbedBuilder.from(embedsToUse[0]).setImage(imageUrl);
+                        embedsToUse[0] = newEmbed;
+                    } else {
+                        const newEmbed = new EmbedBuilder().setImage(imageUrl);
+                        embedsToUse.push(newEmbed);
+                    }
                 }
 
-                if (targetMessage.author.id === client.user.id) {
-                    await targetMessage.edit({ embeds: embedsToUse, components: [row] });
-                } else {
-                    await targetChannel.send({ content: targetMessage.content || null, embeds: embedsToUse, components: [row] });
-                }
+                try {
+                    if (targetMessage.author.id === client.user.id) {
+                        await targetMessage.edit({ embeds: embedsToUse, components: [row] });
+                        return await interaction.editReply({ 
+                            content: `✅ เพิ่มปุ่มรับยศ ${buttonCount} ปุ่ม ให้ข้อความในห้อง <#${targetChannel.id}> เรียบร้อยแล้ว!` 
+                        });
+                    } else {
+                        const payload = {
+                            content: targetMessage.content || null,
+                            embeds: embedsToUse,
+                            files: Array.from(targetMessage.attachments.values()),
+                            components: [row]
+                        };
 
-                return await interaction.editReply({ content: `✅ เพิ่มปุ่มรับยศ ${buttonCount} ปุ่มเรียบร้อยแล้ว!` });
+                        await targetChannel.send(payload);
+                        return await interaction.editReply({ 
+                            content: `✅ สร้างข้อความใหม่พร้อมแนบปุ่มให้ในห้อง <#${targetChannel.id}> เรียบร้อยแล้วครับ!` 
+                        });
+                    }
+                } catch (error) {
+                    console.error('Error attaching buttons:', error);
+                    return await interaction.editReply({ content: '❌ เกิดข้อผิดพลาดในการแก้ไขข้อความ' });
+                }
             }
 
             if (interaction.commandName === 'setup-ticket') {
-                return await interaction.showModal(createSetupModal('modal_config_ticket', '⚙️ ตั้งค่าระบบส่งเรื่องร้องเรียน', '📝 แจ้งปัญหาและส่งเรื่องร้องเรียน', 'กดปุ่มด้านล่างเพื่อส่งเรื่องร้องเรียน', 'ส่งเรื่องร้องเรียน'));
+                const modal = createSetupModal('modal_config_ticket', '⚙️ ตั้งค่าระบบส่งเรื่องร้องเรียน', '📝 แจ้งปัญหาและส่งเรื่องร้องเรียน', 'กดปุ่มด้านล่างเพื่อส่งเรื่องร้องเรียนหรือแจ้งปัญหากับทีมงาน', 'ส่งเรื่องร้องเรียน');
+                return await interaction.showModal(modal);
             }
 
             if (interaction.commandName === 'setup-report') {
-                return await interaction.showModal(createSetupModal('modal_config_report', '⚙️ ตั้งค่าระบบรายงานผู้กระทำผิด', '⚠️ รายงานผู้กระทำผิด', 'กดปุ่มด้านล่างเพื่อแจ้งทีมงาน', 'รายงานผู้กระทำผิด'));
+                const modal = createSetupModal('modal_config_report', '⚙️ ตั้งค่าระบบรายงานผู้กระทำผิด', '⚠️ รายงานผู้กระทำผิด / สมาชิกทำผิดกฏ', 'หากพบเห็นสมาชิกทำผิดกฏ สามารถกดปุ่มด้านล่างเพื่อแจ้งทีมงานได้ทันที', 'รายงานผู้กระทำผิด');
+                return await interaction.showModal(modal);
             }
 
             if (interaction.commandName === 'setup-admin') {
-                return await interaction.showModal(createSetupModal('modal_config_admin', '⚙️ ตั้งค่าแผงควบคุมแอดมิน', '🛠️ แผงควบคุมระบบจัดการผู้ใช้', 'กดปุ่มด้านล่างเพื่อเปิดแบบฟอร์ม', 'จัดการผู้ใช้'));
+                const modal = createSetupModal('modal_config_admin', '⚙️ ตั้งค่าแผงควบคุมแอดมิน', '🛠️ แผงควบคุมระบบจัดการผู้ใช้', 'กดปุ่มด้านล่างเพื่อเปิดแบบฟอร์มจัดการและลงโทษผู้กระทำผิด', 'จัดการผู้ใช้');
+                return await interaction.showModal(modal);
             }
 
+            // 🚀 HANDLER: setup_dropdown แบบรับยศไม่จำกัด (สูงสุด 125 ยศ/ข้อความ)
             if (interaction.commandName === 'setup_dropdown') {
                 await interaction.deferReply({ ephemeral: true });
 
@@ -504,23 +566,35 @@ client.on('interactionCreate', async (interaction) => {
                 const placeholder = interaction.options.getString('placeholder') || '▼ เลือกยศของคุณที่นี่';
                 const imageUrl = interaction.options.getString('image_url')?.trim();
 
-                let targetMessage = await interaction.channel.messages.fetch(messageId).catch(() => null);
-                if (!targetMessage) return await interaction.editReply({ content: '❌ หาข้อความไม่พบ! กรุณาตรวจสอบ ID ข้อความอีกครั้ง' });
+                let targetMessage = interaction.channel.messages.cache.get(messageId);
+                if (!targetMessage) {
+                    targetMessage = await interaction.channel.messages.fetch(messageId).catch(() => null);
+                }
 
+                if (!targetMessage) {
+                    return await interaction.editReply({ content: '❌ หาข้อความไม่พบ! กรุณาตรวจสอบ ID ข้อความอีกครั้ง' });
+                }
+
+                // กรองยศที่มีจริงในเซิร์ฟเวอร์
                 const validRoles = [];
                 for (const id of rawRoleIds) {
                     const role = interaction.guild.roles.cache.get(id);
                     if (role) validRoles.push(role);
                 }
 
-                if (validRoles.length === 0) return await interaction.editReply({ content: '❌ ไม่พบยศที่ระบุในเซิร์ฟเวอร์' });
+                if (validRoles.length === 0) {
+                    return await interaction.editReply({ content: '❌ ไม่พบยศที่ระบุในเซิร์ฟเวอร์ กรุณาเช็ก ID ของยศให้ถูกต้อง' });
+                }
 
+                // หั่นยศออกเป็นกลุ่มละ 25 ยศ (จำกัดของ Discord คือ 25 ตัวเลือก/1 Dropdown, สูงสุด 5 Dropdowns = 125 ยศ)
                 const roleChunks = [];
                 for (let i = 0; i < validRoles.length; i += 25) {
                     roleChunks.push(validRoles.slice(i, i + 25));
                 }
 
-                if (roleChunks.length > 5) return await interaction.editReply({ content: '⚠️ Discord อนุญาตให้ใส่ Dropdown ได้สูงสุด 5 แถว (125 ยศ) ต่อ 1 ข้อความครับ' });
+                if (roleChunks.length > 5) {
+                    return await interaction.editReply({ content: '⚠️ Discord อนุญาตให้ใส่ Dropdown ได้สูงสุด 5 แถว (125 ยศ) ต่อ 1 ข้อความครับ' });
+                }
 
                 const actionRows = [];
                 roleChunks.forEach((chunk, index) => {
@@ -529,222 +603,566 @@ client.on('interactionCreate', async (interaction) => {
                         .setPlaceholder(roleChunks.length > 1 ? `${placeholder} (ชุดที่ ${index + 1})` : placeholder)
                         .setMinValues(0)
                         .setMaxValues(chunk.length)
-                        .addOptions(chunk.map(role => new StringSelectMenuOptionBuilder().setLabel(role.name).setValue(role.id)));
+                        .addOptions(
+                            chunk.map(role => 
+                                new StringSelectMenuOptionBuilder()
+                                    .setLabel(role.name)
+                                    .setValue(role.id)
+                            )
+                        );
 
                     actionRows.push(new ActionRowBuilder().addComponents(selectMenu));
                 });
 
                 let embedsToUse = [...(targetMessage.embeds || [])];
                 if (imageUrl && imageUrl.startsWith('http')) {
-                    const newEmbed = embedsToUse.length > 0 ? EmbedBuilder.from(embedsToUse[0]).setImage(imageUrl) : new EmbedBuilder().setImage(imageUrl);
-                    embedsToUse[0] = newEmbed;
+                    if (embedsToUse.length > 0) {
+                        const newEmbed = EmbedBuilder.from(embedsToUse[0]).setImage(imageUrl);
+                        embedsToUse[0] = newEmbed;
+                    } else {
+                        const newEmbed = new EmbedBuilder().setImage(imageUrl);
+                        embedsToUse.push(newEmbed);
+                    }
                 }
 
-                if (targetMessage.author.id === client.user.id) {
-                    await targetMessage.edit({ embeds: embedsToUse, components: actionRows });
-                } else {
-                    await targetMessage.channel.send({ content: targetMessage.content || null, embeds: embedsToUse, components: actionRows });
+                try {
+                    if (targetMessage.author.id === client.user.id) {
+                        await targetMessage.edit({ embeds: embedsToUse, components: actionRows });
+                        return await interaction.editReply({ content: `✅ อัปเดต Dropdown เลือกยศรวม **${validRoles.length}** ยศ ใส่ข้อความเดิมเรียบร้อยแล้ว!` });
+                    } else {
+                        const payload = {
+                            content: targetMessage.content || null,
+                            embeds: embedsToUse,
+                            files: Array.from(targetMessage.attachments.values()),
+                            components: actionRows
+                        };
+
+                        await targetMessage.channel.send(payload);
+                        return await interaction.editReply({ content: `✅ สร้างข้อความใหม่พร้อมแนบ Dropdown รวม **${validRoles.length}** ยศ เรียบร้อย!` });
+                    }
+                } catch (err) {
+                    console.error('Dropdown Setup Error:', err);
+                    return await interaction.editReply({ content: '❌ เกิดข้อผิดพลาดในการใส่ Dropdown กรุณาตรวจสอบสิทธิ์บอท' });
                 }
-
-                return await interaction.editReply({ content: `✅ อัปเดต Dropdown เลือกยศรวม **${validRoles.length}** ยศ เรียบร้อย!` });
-            }
-
-            // --- 🛒 ระบบร้านค้าขายยศ & เติมเงิน ---
-            // [ปรับปรุง] รับค่า ประเภท และ จำนวนคงเหลือ
-            if (interaction.commandName === 'add-shop-item') {
-                await interaction.deferReply({ ephemeral: true });
-                const role = interaction.options.getRole('role');
-                const price = interaction.options.getInteger('price');
-                const description = interaction.options.getString('description') || 'ไม่มีรายละเอียดเพิ่มเติม';
-                const category = interaction.options.getString('category') || 'ยศอื่นๆ'; // [ใหม่] ประเภท
-                const stock = interaction.options.getInteger('stock') || 9999;     // [ใหม่] จำนวนคงเหลือ
-
-                const guildItems = client.shopItems.get(interaction.guild.id) || [];
-                const existingIndex = guildItems.findIndex(i => i.roleId === role.id);
-
-                if (existingIndex >= 0) {
-                    guildItems[existingIndex] = { roleId: role.id, price, description, category, stock };
-                } else {
-                    guildItems.push({ roleId: role.id, price, description, category, stock });
-                }
-
-                client.shopItems.set(interaction.guild.id, guildItems);
-
-                // ⚡ สั่งให้ไปอัปเดตหน้าร้านค้าเรียลไทม์ทันที!
-                const isUpdated = await updateShopDisplay(interaction.guild);
-
-                return await interaction.editReply({ 
-                    content: `✅ เพิ่ม/แก้ไขยศ **${role.name}** (ราคา ${price} บาท, ประเภท: ${category}, คงเหลือ: ${stock} ชิ้น) สำเร็จ!` + 
-                             (isUpdated ? `\n⚡ **อัปเดตข้อมูลไปยังหน้าร้านค้าเรียลไทม์เรียบร้อยแล้ว!**` : `\n💡 *(หมายเหตุ: หากยังไม่มีหน้าร้านค้า ให้ใช้คำสั่ง \`/setup-shop\` เพื่อสร้างก่อนนะครับ)*`)
-                });
-            }
-
-            if (interaction.commandName === 'setup-shop-logs') {
-                await interaction.deferReply({ ephemeral: true });
-                const topupLog = interaction.options.getChannel('topup_log');
-                const shopLog = interaction.options.getChannel('shop_log');
-                const accountName = interaction.options.getString('account_name') || 'ไม่ระบุชื่อบัญชี';
-                const truewallet = interaction.options.getString('truewallet') || 'ไม่ระบุ';
-                const promptpay = interaction.options.getString('promptpay') || 'ไม่ระบุ';
-                const qrCodeUrl = interaction.options.getString('qr_code_url') || null;
-
-                client.shopLogsConfig.set(interaction.guild.id, {
-                    topupLogId: topupLog.id,
-                    shopLogId: shopLog.id,
-                    accountName,
-                    truewallet,
-                    promptpay,
-                    qrCodeUrl
-                });
-
-                return await interaction.editReply({ 
-                    content: `✅ **ตั้งค่าระบบรับเงินและบันทึก Logs สำเร็จ!**\n\n` +
-                             `• **ชื่อบัญชีรับเงิน:** \`${accountName}\`\n` +
-                             `• **TrueMoney Wallet:** \`${truewallet}\`\n` +
-                             `• **PromptPay / เลขบัญชี:** \`${promptpay}\`\n` +
-                             `• **รูป QR Code:** ${qrCodeUrl ? '`ตั้งค่าไว้แล้ว`' : '`ไม่ได้แนบ`'}\n` +
-                             `• **ห้อง Log เติมเงิน:** <#${topupLog.id}>\n` +
-                             `• **ห้อง Log ซื้อขาย:** <#${shopLog.id}>` 
-                });
-            }
-
-            if (interaction.commandName === 'setup-shop') {
-                await interaction.deferReply({ ephemeral: true });
-
-                const targetChannel = interaction.options.getChannel('channel');
-                if (!targetChannel || !targetChannel.isTextBased()) {
-                    return await interaction.editReply({ content: '❌ ห้องที่เลือกไม่ใช่ห้องข้อความ กรุณาเลือกห้องใหม่อีกครั้ง' });
-                }
-
-                const title = interaction.options.getString('title') || '🛒 ร้านค้าขายยศประจำเซิร์ฟเวอร์';
-                const description = interaction.options.getString('description') || 'ยินดีต้อนรับคุณ {user} เลือกซื้อยศที่ต้องการ หรือกดปุ่มเติมเงินด้านล่างเพื่อสะสมเครดิต!';
-                const bannerUrl = interaction.options.getString('banner_url') || null;
-                const color = interaction.options.getString('color') || '#F1C40F';
-
-                const sentMsg = await targetChannel.send({ content: '⏳ กำลังสร้างหน้าร้านค้า...' }).catch(() => null);
-
-                if (sentMsg) {
-                    client.shopMessageConfigs.set(interaction.guild.id, {
-                        channelId: targetChannel.id,
-                        messageId: sentMsg.id,
-                        title, description, bannerUrl, color
-                    });
-
-                    // ⚡ สร้างหน้าจอและอัปเดตทันที
-                    await updateShopDisplay(interaction.guild);
-                }
-
-                return await interaction.editReply({ content: `✅ ส่งข้อความหน้าร้านค้าไปยังห้อง <#${targetChannel.id}> เรียบร้อยแล้ว! (หลังจากนี้ทุกครั้งที่คุณใช้คำสั่ง \`/add-shop-item\` หน้าร้านนี้จะอัปเดตสินค้าให้อัตโนมัติทันทีครับ)` });
-            }
-
-            // --- ระบบเสกเงินสำหรับแอดมิน ---
-            if (interaction.commandName === 'setup-admin-give-money') {
-                await interaction.deferReply({ ephemeral: true });
-                const targetChannel = interaction.options.getChannel('channel');
-
-                if (!targetChannel || !targetChannel.isTextBased()) {
-                    return await interaction.editReply({ content: '❌ กรุณาเลือกห้องข้อความที่ถูกต้อง' });
-                }
-
-                const adminEmbed = new EmbedBuilder()
-                    .setTitle('🪄 แผงควบคุมเสกเงิน (Admin Balance Controller)')
-                    .setColor(0x9B59B6)
-                    .setDescription('กดปุ่มด้านล่างเพื่อเพิ่มยอดเงินให้สมาชิกคนใดก็ได้ในเซิร์ฟเวอร์ (รวมถึงตัวเอง)\n\n📌 **หมายเหตุ:** แอดมินสามารถกำหนดจำนวนเงินได้ไม่จำกัด')
-                    .setTimestamp();
-
-                const btnRow = new ActionRowBuilder().addComponents(
-                    new ButtonBuilder()
-                        .setCustomId('btn_admin_give_money')
-                        .setLabel('🪄 เสกเงิน / เพิ่มเครดิต')
-                        .setStyle(ButtonStyle.Danger)
-                );
-
-                await targetChannel.send({ embeds: [adminEmbed], components: [btnRow] });
-                return await interaction.editReply({ content: `✅ สร้างปุ่มแผงเสกเงินในห้อง <#${targetChannel.id}> เรียบร้อยแล้ว!` });
             }
         }
 
-        // --- BUTTON HANDLERS ---
+        // --- BUTTON & MODAL & SELECT MENU HANDLERS ---
         if (interaction.isButton()) {
             if (interaction.customId.startsWith('btn_toggle_role_')) {
                 await interaction.deferReply({ ephemeral: true });
+
                 const roleId = interaction.customId.replace('btn_toggle_role_', '');
                 const role = interaction.guild.roles.cache.get(roleId);
                 const member = interaction.member;
 
-                if (!role) return await interaction.editReply({ content: '❌ ไม่พบยศนี้ในเซิร์ฟเวอร์' });
+                if (!role) {
+                    return await interaction.editReply({ content: '❌ ไม่พบยศนี้ในเซิร์ฟเวอร์ (ยศอาจถูกลบไปแล้ว)' });
+                }
 
-                if (member.roles.cache.has(role.id)) {
-                    await member.roles.remove(role);
-                    return await interaction.editReply({ content: `🔴 ถอดยศ **${role.name}** ออกเรียบร้อยแล้ว!` });
-                } else {
-                    await member.roles.add(role);
-                    return await interaction.editReply({ content: `✅ เพิ่มยศ **${role.name}** ให้คุณเรียบร้อยแล้ว!` });
+                try {
+                    const botMember = await interaction.guild.members.fetchMe();
+                    if (role.position >= botMember.roles.highest.position) {
+                        return await interaction.editReply({ 
+                            content: `❌ บอทไม่สามารถมอบยศ **${role.name}** ได้เนื่องจากยศบอทอยู่ต่ำกว่ายศนี้!` 
+                        });
+                    }
+
+                    if (member.roles.cache.has(role.id)) {
+                        await member.roles.remove(role);
+                        return await interaction.editReply({ 
+                            content: `🔴 ถอดยศ **${role.name}** ออกเรียบร้อยแล้ว!` 
+                        });
+                    } else {
+                        await member.roles.add(role);
+                        return await interaction.editReply({ 
+                            content: `✅ เพิ่มยศ **${role.name}** ให้คุณเรียบร้อยแล้ว!` 
+                        });
+                    }
+                } catch (err) {
+                    console.error('Error toggling button role:', err);
+                    return await interaction.editReply({ content: '❌ เกิดข้อผิดพลาดในการปรับเปลี่ยนยศ' });
                 }
             }
 
-            if (interaction.customId === 'btn_check_balance') {
-                const bal = client.userBalances.get(interaction.user.id) || 0;
-                return await interaction.reply({ content: `💰 ยอดเงินคงเหลือของคุณคือ **${bal}** บาท`, ephemeral: true });
+            if (interaction.customId === 'btn_cmd_ticket') {
+                const modal = new ModalBuilder().setCustomId('modal_cmd_ticket_submit').setTitle('📝 แบบฟอร์มส่งเรื่องร้องเรียน');
+                const detailInput = new TextInputBuilder().setCustomId('input_detail').setLabel('รายละเอียดเรื่องที่ต้องการแจ้ง').setPlaceholder('พิมพ์รายละเอียดปัญหา...').setStyle(TextInputStyle.Paragraph).setRequired(true);
+                modal.addComponents(new ActionRowBuilder().addComponents(detailInput));
+                return await interaction.showModal(modal);
             }
 
-            // ปุ่มกดเสกเงินสำหรับแอดมิน
-            if (interaction.customId === 'btn_admin_give_money') {
-                if (!interaction.member.permissions.has(PermissionFlagsBits.Administrator)) {
-                    return await interaction.reply({ content: '❌ คุณไม่มีสิทธิ์ใช้งานปุ่มนี้ (สำหรับ Administrator เท่านั้น)', ephemeral: true });
-                }
-
-                const modal = new ModalBuilder().setCustomId('modal_admin_give_money').setTitle('🪄 ระบบเสกเงิน/เพิ่มเครดิต');
-                
-                const userIdInput = new TextInputBuilder()
-                    .setCustomId('input_target_user_id')
-                    .setLabel('User ID ของผู้รับเงิน')
-                    .setPlaceholder('เช่น 123456789012345678')
-                    .setValue(interaction.user.id) 
-                    .setStyle(TextInputStyle.Short)
-                    .setRequired(true);
-
-                const amountInput = new TextInputBuilder()
-                    .setCustomId('input_give_amount')
-                    .setLabel('จำนวนเงินที่ต้องการเสก (บาท)')
-                    .setPlaceholder('เช่น 1000')
-                    .setStyle(TextInputStyle.Short)
-                    .setRequired(true);
+            if (interaction.customId === 'btn_cmd_report') {
+                const modal = new ModalBuilder().setCustomId('modal_cmd_report_submit').setTitle('⚠️ แบบฟอร์มรายงานผู้กระทำผิด');
+                const userInput = new TextInputBuilder().setCustomId('report_target_user').setLabel('1. แท็ก / ID ผู้กระทำผิด').setPlaceholder('ใส่ ID หรือ @username').setStyle(TextInputStyle.Short).setRequired(true);
+                const reasonInput = new TextInputBuilder().setCustomId('report_reason').setLabel('2. เหตุผลที่รายงาน').setStyle(TextInputStyle.Short).setRequired(true);
+                const detailInput = new TextInputBuilder().setCustomId('report_detail').setLabel('3. รายละเอียด/หลักฐาน').setStyle(TextInputStyle.Paragraph).setRequired(true);
 
                 modal.addComponents(
-                    new ActionRowBuilder().addComponents(userIdInput),
-                    new ActionRowBuilder().addComponents(amountInput)
+                    new ActionRowBuilder().addComponents(userInput),
+                    new ActionRowBuilder().addComponents(reasonInput),
+                    new ActionRowBuilder().addComponents(detailInput)
                 );
-
                 return await interaction.showModal(modal);
             }
 
-            // 🧧 ปุ่มเติมเงิน TrueMoney
-            if (interaction.customId === 'btn_topup_truemoney') {
-                const logsCfg = client.shopLogsConfig.get(interaction.guild.id);
-                const accName = logsCfg?.accountName || 'ไม่ระบุชื่อบัญชี';
-                const twNo = logsCfg?.truewallet || 'ไม่ระบุ';
+            if (interaction.customId === 'btn_cmd_admin') {
+                const modal = new ModalBuilder().setCustomId('modal_cmd_admin_submit').setTitle('👤 แบบฟอร์มจัดการผู้ใช้');
+                const userInput = new TextInputBuilder().setCustomId('admin_target_user').setLabel('1. แท็ก / ID ผู้ใช้').setPlaceholder('ใส่ ID หรือ @username').setStyle(TextInputStyle.Short).setRequired(true);
+                const reasonInput = new TextInputBuilder().setCustomId('admin_reason').setLabel('2. เหตุผลที่รายงาน').setStyle(TextInputStyle.Short).setRequired(true);
+                const problemInput = new TextInputBuilder().setCustomId('admin_problem').setLabel('3. ปัญหาที่พบจากผู้ใช้').setStyle(TextInputStyle.Paragraph).setRequired(true);
 
-                const modal = new ModalBuilder().setCustomId('modal_topup_truemoney').setTitle('🧧 เติมเงิน TrueMoney Wallet');
-                const voucherInput = new TextInputBuilder()
-                    .setCustomId('input_voucher_url')
-                    .setLabel(`ชื่อบัญชี: ${accName} \vert{} เบอร์: ${twNo}`)
-                    .setPlaceholder('วางลิงก์ซองของขวัญ https://gift.truemoney.com/v2/verify?v=...')
-                    .setStyle(TextInputStyle.Short)
-                    .setRequired(true);
-
-                modal.addComponents(new ActionRowBuilder().addComponents(voucherInput));
+                modal.addComponents(
+                    new ActionRowBuilder().addComponents(userInput),
+                    new ActionRowBuilder().addComponents(reasonInput),
+                    new ActionRowBuilder().addComponents(problemInput)
+                );
                 return await interaction.showModal(modal);
             }
+        }
 
-            // 📲 ปุ่มเติมเงิน PromptPay / QR Code
-            if (interaction.customId === 'btn_topup_promptpay') {
-                const logsCfg = client.shopLogsConfig.get(interaction.guild.id);
-                const accName = logsCfg?.accountName || 'กรุณาสอบถามแอดมิน';
-                const ppNo = logsCfg?.promptpay || 'กรุณาสอบถามแอดมิน';
-                const qrUrl = logsCfg?.qrCodeUrl || null;
+        if (interaction.isModalSubmit()) {
+            if (interaction.customId.startsWith('modal_config_')) {
+                await interaction.deferReply({ ephemeral: true });
 
-                const ppEmbed = new EmbedBuilder()
-                    .setTitle('📲 เติมเงินผ่าน PromptPay / QR Code')
-                    .setColor(0x3498DB)
-                    .setDescription(`👤 **ชื่อบัญชีรับเงิน:** \`${accName}\`\n💳 **เลขบัญชี / พร้อมเพย์:** \`${ppNo}\`\n\n📌 **วิธีเติมเงิน:**\n1. โอนเงินหรือสแกน QR Code ตามจำนวนที่ต้องการ\n2. กดปุ่ม **"📩 แจ้งแนบสลิปการโอนเงิน"
+                const title = interaction.fields.getTextInputValue('cfg_title');
+                const desc = interaction.fields.getTextInputValue('cfg_desc');
+                const btnLabel = interaction.fields.getTextInputValue('cfg_btn_label');
+                const imageUrl = interaction.fields.getTextInputValue('cfg_image_url');
+
+                let customIdBtn = 'btn_cmd_ticket';
+                let btnStyle = ButtonStyle.Primary;
+                let emoji = '📝';
+                let color = 0xED4245;
+
+                if (interaction.customId === 'modal_config_report') {
+                    customIdBtn = 'btn_cmd_report';
+                    btnStyle = ButtonStyle.Warning;
+                    emoji = '⚠️';
+                    color = 0xFEE75C;
+                } else if (interaction.customId === 'modal_config_admin') {
+                    customIdBtn = 'btn_cmd_admin';
+                    btnStyle = ButtonStyle.Danger;
+                    emoji = '👤';
+                    color = 0x5865F2;
+                }
+
+                const embed = new EmbedBuilder().setTitle(title).setDescription(desc).setColor(color).setTimestamp();
+                if (imageUrl && imageUrl.startsWith('http')) embed.setImage(imageUrl);
+
+                const btn = new ButtonBuilder().setCustomId(customIdBtn).setLabel(btnLabel).setEmoji(emoji).setStyle(btnStyle);
+
+                await interaction.channel.send({ embeds: [embed], components: [new ActionRowBuilder().addComponents(btn)] });
+                return await interaction.editReply({ content: '✅ สร้างระบบพร้อมใช้งานเรียบร้อยแล้ว!' });
+            }
+
+            if (interaction.customId === 'modal_cmd_ticket_submit') {
+                await interaction.deferReply({ ephemeral: true });
+
+                const detailVal = interaction.fields.getTextInputValue('input_detail');
+                const reportChannel = interaction.guild.channels.cache.get(REPORT_LOG_CHANNEL_ID);
+
+                const embed = new EmbedBuilder()
+                    .setTitle(`🚨 เรื่องร้องเรียนจาก ${interaction.user.username}`)
+                    .setColor(0xED4245)
+                    .addFields(
+                        { name: 'ผู้ส่งเรื่อง', value: `<@${interaction.user.id}>`, inline: false },
+                        { name: 'รายละเอียด', value: detailVal, inline: false }
+                    ).setTimestamp();
+
+                if (reportChannel) await reportChannel.send({ embeds: [embed] });
+                return await interaction.editReply({ content: '✅ ส่งข้อมูลให้ทีมงานเรียบร้อยแล้ว!' });
+            }
+
+            if (interaction.customId === 'modal_cmd_report_submit') {
+                await interaction.deferReply({ ephemeral: true });
+
+                const targetUser = interaction.fields.getTextInputValue('report_target_user');
+                const reason = interaction.fields.getTextInputValue('report_reason');
+                const detail = interaction.fields.getTextInputValue('report_detail');
+                const reportChannel = interaction.guild.channels.cache.get(REPORT_LOG_CHANNEL_ID);
+
+                const embed = new EmbedBuilder()
+                    .setTitle(`⚠️ รายงานผู้กระทำผิด`)
+                    .setColor(0xFEE75C)
+                    .addFields(
+                        { name: 'ผู้ส่งรายงาน', value: `<@${interaction.user.id}>`, inline: false },
+                        { name: 'ผู้ถูกรายงาน', value: targetUser, inline: false },
+                        { name: 'เหตุผล', value: reason, inline: false },
+                        { name: 'รายละเอียด', value: detail, inline: false }
+                    ).setTimestamp();
+
+                if (reportChannel) await reportChannel.send({ embeds: [embed] });
+                return await interaction.editReply({ content: '✅ ส่งรายงานให้ทีมงานเรียบร้อยแล้ว!' });
+            }
+
+            if (interaction.customId === 'modal_cmd_admin_submit') {
+                await interaction.deferReply({ ephemeral: true });
+
+                const rawUser = interaction.fields.getTextInputValue('admin_target_user').replace(/[<@!>]/g, '').trim();
+                const reason = interaction.fields.getTextInputValue('admin_reason');
+                const problem = interaction.fields.getTextInputValue('admin_problem');
+
+                const targetMember = await interaction.guild.members.fetch(rawUser).catch(() => null);
+                if (!targetMember) return interaction.editReply({ content: '❌ ไม่พบผู้ใช้คนนี้ในเซิร์ฟเวอร์' });
+
+                const selectMenu = new StringSelectMenuBuilder()
+                    .setCustomId(`menu_admin_penalty_${targetMember.id}`)
+                    .setPlaceholder('เลือกลงบัญชี (แบน & ลงบัญชีดำ)')
+                    .addOptions([
+                        { label: '⛔ ลงบัญชีดำ (Blacklist)', description: 'เตะออกจากเซิร์ฟเวอร์ + ประกาศห้องบัญชีดำ', value: 'admin_penalty_blacklist', emoji: '⛔' },
+                        { label: '🔨 แบน (Ban / Timeout)', description: 'ให้ยศ "บัญชีถูกแบน" + กำหนดเวลา', value: 'admin_penalty_ban', emoji: '🔨' }
+                    ]);
+
+                client.adminTempData = client.adminTempData || new Map();
+                client.adminTempData.set(targetMember.id, { reason, problem });
+
+                return await interaction.editReply({
+                    content: `🎯 **ผู้ถูกจัดการ:** <@${targetMember.id}>\n📝 **เหตุผล:** ${reason}\n⚠️ **ปัญหา:** ${problem}\n\n👇 **เลือกลงโทษ:**`,
+                    components: [new ActionRowBuilder().addComponents(selectMenu)]
+                });
+            }
+
+            if (interaction.customId.startsWith('modal_admin_ban_time_')) {
+                await interaction.deferReply({ ephemeral: true });
+
+                const targetId = interaction.customId.replace('modal_admin_ban_time_', '');
+                const durationStr = interaction.fields.getTextInputValue('ban_duration');
+                const tempData = client.adminTempData?.get(targetId) || { reason: 'ไม่ได้ระบุ', problem: 'ไม่ได้ระบุ' };
+                const targetMember = await interaction.guild.members.fetch(targetId).catch(() => null);
+
+                if (!targetMember) return interaction.editReply({ content: '❌ ไม่พบผู้ใช้คนนี้แล้ว' });
+
+                if (BANNED_ROLE_ID) await targetMember.roles.add(BANNED_ROLE_ID).catch(() => null);
+
+                let ms = 0;
+                if (durationStr.endsWith('d')) ms = parseInt(durationStr) * 24 * 60 * 60 * 1000;
+                else if (durationStr.endsWith('h')) ms = parseInt(durationStr) * 60 * 60 * 1000;
+                else if (durationStr.endsWith('m')) ms = parseInt(durationStr) * 60 * 1000;
+
+                if (ms > 0) await targetMember.timeout(ms, tempData.reason).catch(() => null);
+
+                const banLogChan = interaction.guild.channels.cache.get(BAN_LOG_CHANNEL_ID || REPORT_LOG_CHANNEL_ID);
+                const banEmbed = new EmbedBuilder()
+                    .setTitle('🔨 ประกาศสมาชิกโดนแบน')
+                    .setColor(0xFF0000)
+                    .addFields(
+                        { name: 'ผู้ถูกลงโทษ', value: `<@${targetMember.id}>`, inline: false },
+                        { name: 'ระยะเวลา', value: durationStr, inline: true },
+                        { name: 'เหตุผล', value: tempData.reason, inline: true },
+                        { name: 'ปัญหาที่พบ', value: tempData.problem, inline: false },
+                        { name: 'ผู้อนุมัติ', value: `<@${interaction.user.id}>`, inline: false }
+                    ).setThumbnail(targetMember.user.displayAvatarURL()).setTimestamp();
+
+                if (banLogChan) await banLogChan.send({ embeds: [banEmbed] });
+                return await interaction.editReply({ content: `✅ ดำเนินการแบน <@${targetId}> ระยะเวลา \`${durationStr}\` เรียบร้อย!` });
+            }
+        }
+
+        if (interaction.isStringSelectMenu()) {
+            if (interaction.customId.startsWith('menu_admin_penalty_')) {
+                const targetId = interaction.customId.replace('menu_admin_penalty_', '');
+                const selectedOption = interaction.values[0];
+                const tempData = client.adminTempData?.get(targetId) || { reason: 'ไม่ได้ระบุ', problem: 'ไม่ได้ระบุ' };
+                const targetMember = await interaction.guild.members.fetch(targetId).catch(() => null);
+
+                if (!targetMember) return interaction.update({ content: '❌ ไม่พบผู้ใช้คนนี้แล้ว', components: [] });
+
+                if (selectedOption === 'admin_penalty_blacklist') {
+                    const blacklistChan = interaction.guild.channels.cache.get(BLACKLIST_CHANNEL_ID);
+                    const blacklistEmbed = new EmbedBuilder()
+                        .setTitle('⛔ ประกาศรายชื่อบัญชีดำ (Blacklist)')
+                        .setColor(0x000000)
+                        .addFields(
+                            { name: 'ผู้ถูกบันทึก', value: `${targetMember.user.tag} (${targetMember.id})`, inline: false },
+                            { name: 'เหตุผล', value: tempData.reason, inline: false },
+                            { name: 'ปัญหาที่พบ', value: tempData.problem, inline: false },
+                            { name: 'โดยแอดมิน', value: `<@${interaction.user.id}>`, inline: false }
+                        ).setThumbnail(targetMember.user.displayAvatarURL()).setTimestamp();
+
+                    if (blacklistChan) await blacklistChan.send({ embeds: [blacklistEmbed] });
+                    await targetMember.kick(`[Blacklist] ${tempData.reason}`).catch(() => null);
+
+                    return await interaction.update({ content: `⛔ บันทึก <@${targetId}> ลงบัญชีดำและเตะออกเรียบร้อย!`, components: [] });
+                }
+
+                if (selectedOption === 'admin_penalty_ban') {
+                    const modal = new ModalBuilder().setCustomId(`modal_admin_ban_time_${targetId}`).setTitle('⏱️ กำหนดระยะเวลาการแบน');
+                    const durationInput = new TextInputBuilder().setCustomId('ban_duration').setLabel('ระบุระยะเวลา (เช่น 1d = 1วัน, 12h = 12ชม.)').setPlaceholder('ตัวอย่าง: 7d หรือ 24h').setStyle(TextInputStyle.Short).setRequired(true);
+
+                    modal.addComponents(new ActionRowBuilder().addComponents(durationInput));
+                    return await interaction.showModal(modal);
+                }
+            }
+
+            // 🟢 HANDLER: ตรวจจับการกดเลือก Dropdown ไม่จำกัดยศ
+            if (interaction.customId.startsWith('select_unlimited_roles_')) {
+                await interaction.deferReply({ ephemeral: true });
+
+                const selectedRoleIds = interaction.values;
+                const member = interaction.member;
+                const allMenuRoleIds = interaction.component.options.map(opt => opt.value);
+
+                try {
+                    // ถอดยศที่ไม่ได้เลือกออก (เฉพาะยศที่มีอยู่ในเมนูนี้)
+                    for (const roleId of allMenuRoleIds) {
+                        if (!selectedRoleIds.includes(roleId) && member.roles.cache.has(roleId)) {
+                            await member.roles.remove(roleId).catch(() => null);
+                        }
+                    }
+
+                    // เพิ่มยศที่ถูกเลือก
+                    for (const roleId of selectedRoleIds) {
+                        if (!member.roles.cache.has(roleId)) {
+                            await member.roles.add(roleId).catch(() => null);
+                        }
+                    }
+
+                    return await interaction.editReply({ content: '✅ อัปเดตยศของคุณเรียบร้อยแล้ว!' });
+                } catch (error) {
+                    console.error(error);
+                    return await interaction.editReply({ content: '❌ เกิดข้อผิดพลาดในการปรับเปลี่ยนยศ' });
+                }
+            }
+        }
+    } catch (err) {
+        console.error('Interaction Exception:', err);
+    }
+});
+
+// 🌟 ระบบตรวจจับสมาชิกใหม่เข้าดิส (WELCOME AUTOMATION)
+client.on('guildMemberAdd', async (member) => {
+    try {
+        const welcomeConfig = client.welcomeConfigs.get(member.guild.id) || {
+            channelId: process.env.WELCOME_CHANNEL_ID,
+            title: '🎉 ยินดีต้อนรับสู่ {guild}!',
+            description: '👋 ยินดีต้อนรับคุณ {user} เข้าสู่เซิร์ฟเวอร์ **{guild}** ครับ!\n\nขณะนี้เซิร์ฟเวอร์ของเรามีสมาชิกทั้งหมด **{memberCount}** คนแล้ว ✨\nขอให้สนุกกับการอยู่ร่วมกันนะครับ!',
+            contentMessage: '✨ ยินดีต้อนรับ {user} สู่เซิร์ฟเวอร์ของเรา!',
+            bannerUrl: null,
+            color: '#5865F2'
+        };
+
+        if (!welcomeConfig.channelId) return;
+
+        const welcomeChannel = member.guild.channels.cache.get(welcomeConfig.channelId);
+        if (!welcomeChannel) return;
+
+        const guild = member.guild;
+
+        const formattedTitle = parseCustomTags(welcomeConfig.title, guild, member);
+        const formattedDesc = parseCustomTags(welcomeConfig.description, guild, member);
+        const formattedContent = parseCustomTags(welcomeConfig.contentMessage, guild, member);
+
+        const welcomeEmbed = new EmbedBuilder()
+            .setTitle(formattedTitle)
+            .setColor(welcomeConfig.color || '#5865F2')
+            .setDescription(formattedDesc)
+            .addFields(
+                { name: '👤 สมาชิกใหม่', value: `<@${member.id}>`, inline: true },
+                { name: '📊 ลำดับสมาชิก', value: `คนที่ \`${guild.memberCount}\``, inline: true }
+            )
+            .setThumbnail(member.user.displayAvatarURL({ dynamic: true }))
+            .setFooter({ text: `${guild.name} • ยินดีต้อนรับนะ 🎉` })
+            .setTimestamp();
+
+        if (welcomeConfig.bannerUrl && welcomeConfig.bannerUrl.startsWith('http')) {
+            welcomeEmbed.setImage(welcomeConfig.bannerUrl);
+        }
+
+        await welcomeChannel.send({
+            content: formattedContent,
+            embeds: [welcomeEmbed]
+        }).catch(err => console.error('ส่งข้อความ Welcome ล้มเหลว:', err));
+
+    } catch (error) {
+        console.error('❌ Error in guildMemberAdd:', error);
+    }
+});
+
+// 🚀 ระบบตรวจจับ Boost จริง
+client.on('guildMemberUpdate', async (oldMember, newMember) => {
+    const oldBoost = oldMember.premiumSince;
+    const newBoost = newMember.premiumSince;
+
+    if (!oldBoost && newBoost) {
+        const boostConfig = client.boostConfigs.get(newMember.guild.id) || {
+            channelId: process.env.BOOST_LOG_CHANNEL_ID,
+            title: '🚀 ขอบคุณสำหรับการ Server Boost!',
+            description: '💖 ขอบคุณคุณ {user} มากๆ นะครับที่ช่วยสนับสนุนเซิร์ฟเวอร์ **{guild}**!\n\nแวะไปคุยกันได้ที่ห้อง {#พูดคุย-ทั่วไป} ได้เลยครับ ✨',
+            contentMessage: '🎉 **NEW BOOST!** ขอบคุณ {user} มากๆ ครับ! 🚀✨',
+            bannerUrl: null,
+            color: '#F47FFF'
+        };
+
+        if (!boostConfig.channelId) return;
+
+        const boostChannel = newMember.guild.channels.cache.get(boostConfig.channelId);
+        if (!boostChannel) return;
+
+        const guild = newMember.guild;
+
+        const formattedTitle = parseCustomTags(boostConfig.title, guild, newMember);
+        const formattedDesc = parseCustomTags(boostConfig.description, guild, newMember);
+        const formattedContent = parseCustomTags(boostConfig.contentMessage, guild, newMember);
+
+        const boostEmbed = new EmbedBuilder()
+            .setTitle(formattedTitle)
+            .setColor(boostConfig.color || '#F47FFF')
+            .setDescription(formattedDesc)
+            .addFields(
+                { name: '👤 ผู้สนับสนุน (Booster)', value: `<@${newMember.id}>`, inline: true },
+                { name: '💎 ยอด Boost รวม', value: `\`${guild.premiumSubscriptionCount || 0}\` บูสต์`, inline: true },
+                { name: '⭐ Server Level', value: `\`Level ${guild.premiumTier}\``, inline: true }
+            )
+            .setThumbnail(newMember.user.displayAvatarURL({ dynamic: true }))
+            .setFooter({ text: `${guild.name} • ขอบคุณสำหรับการสนับสนุน 💖` })
+            .setTimestamp();
+
+        if (boostConfig.bannerUrl && boostConfig.bannerUrl.startsWith('http')) {
+            boostEmbed.setImage(boostConfig.bannerUrl);
+        }
+
+        await boostChannel.send({
+            content: formattedContent,
+            embeds: [boostEmbed]
+        }).catch(err => console.error('ส่งข้อความ Boost ล้มเหลว:', err));
+    }
+});
+
+// 🔴 ระบบพิมพ์จุด (.) รับยศ & คำสั่ง !status
+client.on('messageCreate', async (message) => {
+    if (message.author.bot || !message.guild) return;
+
+    const config = client.dotRoleConfigs.get(message.channel.id);
+    if (config) {
+        const roleId = typeof config === 'string' ? config : config.roleId;
+
+        if (message.content.trim() === '.' || message.content.length > 0) {
+            try {
+                const role = message.guild.roles.cache.get(roleId);
+                if (!role) return;
+
+                if (message.member.roles.cache.has(roleId)) {
+                    await message.react('⚠️').catch(() => null);
+                    
+                    const warnMsg = await message.channel.send({
+                        content: `⚠️ <@${message.author.id}> คุณมียศ **${role.name}** อยู่แล้วครับ!`
+                    });
+                    
+                    setTimeout(() => {
+                        warnMsg.delete().catch(() => null);
+                    }, 4000);
+                    return;
+                }
+
+                await message.member.roles.add(role);
+                await message.react('✅').catch(() => null);
+
+                const embedColor = config.color || '#2ECC71';
+                const welcomeEmbed = new EmbedBuilder()
+                    .setTitle('🎉 ยินดีต้อนรับสมาชิกใหม่!')
+                    .setColor(embedColor)
+                    .setDescription(`✨ ยินดีต้อนรับคุณ <@${message.author.id}> เข้าสู่เซิร์ฟเวอร์!\nระบบได้ทำการมอบยศให้เรียบร้อยแล้วครับ ✅`)
+                    .addFields(
+                        { name: '🏷️ ยศที่ได้รับ', value: `<@&${role.id}>`, inline: true },
+                        { name: '📌 สถานะ', value: '\` สำเร็จเรียบร้อย \`', inline: true }
+                    )
+                    .setThumbnail(message.author.displayAvatarURL({ dynamic: true }))
+                    .setFooter({ 
+                        text: `${message.guild.name} • ระบบรับยศอัตโนมัติ`, 
+                        iconURL: message.guild.iconURL({ dynamic: true }) 
+                    })
+                    .setTimestamp();
+
+                if (config.bannerUrl) {
+                    welcomeEmbed.setImage(config.bannerUrl);
+                }
+
+                await message.channel.send({
+                    content: `✨ <@${message.author.id}> ได้รับยศเรียบร้อยแล้ว!`,
+                    embeds: [welcomeEmbed]
+                });
+
+            } catch (error) {
+                console.error('❌ เกิดข้อผิดพลาดในการมอบยศ:', error);
+            }
+        }
+    }
+
+    if (message.content.startsWith('!status')) {
+        const COMMAND_CHANNEL_ID = process.env.COMMAND_CHANNEL_ID;
+        const LOG_CHANNEL_ID = process.env.LOG_CHANNEL_ID;
+
+        if (COMMAND_CHANNEL_ID && message.channel.id !== COMMAND_CHANNEL_ID) {
+            return message.reply(`⚠️ คำสั่งนี้ใช้ได้เฉพาะในห้องสั่งการ <#${COMMAND_CHANNEL_ID}> เท่านั้นครับ!`)
+                .then(msg => setTimeout(() => msg.delete().catch(() => null), 5000));
+        }
+
+        if (!message.member.permissions.has(PermissionFlagsBits.ModerateMembers)) {
+            return message.reply('❌ คุณไม่มีสิทธิ์ใช้คำสั่งนี้');
+        }
+
+        const waitMsg = await message.reply('🔄 กำลังประมวลผลและรวบรวมรายชื่อสมาชิกที่ไม่เคลื่อนไหว...');
+
+        try {
+            const guild = message.guild;
+            await guild.members.fetch();
+
+            const now = Date.now();
+            const members = guild.members.cache.filter(m => !m.user.bot);
+
+            const inactive30Days = [];
+            const inactive90Days = [];
+            const noRoleList = [];
+
+            members.forEach(member => {
+                if (member.roles.cache.size <= 1) {
+                    noRoleList.push(`<@${member.id}>`);
+                }
+
+                if (!member.joinedTimestamp) return;
+                const daysInServer = Math.floor((now - member.joinedTimestamp) / (1000 * 60 * 60 * 24));
+
+                if (daysInServer >= 90) {
+                    inactive90Days.push(`<@${member.id}> (${daysInServer} วัน)`);
+                } else if (daysInServer >= 30) {
+                    inactive30Days.push(`<@${member.id}> (${daysInServer} วัน)`);
+                }
+            });
+
+            const formatList = (arr) => {
+                if (arr.length === 0) return 'ไม่มี';
+                const text = arr.join('\n');
+                return text.length > 1024 ? text.substring(0, 1000) + '\n...และอื่นๆ อีกหลายคน' : text;
+            };
+
+            const embed = new EmbedBuilder()
+                .setTitle(`🚨 [รายชื่อสมาชิกสำหรับคัดออก] - ${guild.name}`)
+                .setColor(0xE74C3C)
+                .setThumbnail(guild.iconURL({ dynamic: true }))
+                .setDescription(`📊 **สมาชิกคนจริงทั้งหมด:** \`${members.size}\` คน`)
+                .addFields(
+                    { name: `❓ ไม่มี Role ใดๆ (${noRoleList.length} คน)`, value: formatList(noRoleList), inline: false },
+                    { name: `🗓️ อยู่มาเกิน 3 เดือน / 90+ วัน (${inactive90Days.length} คน)`, value: formatList(inactive90Days), inline: false },
+                    { name: `📅 อยู่มาเกิน 1 เดือน / 30+ วัน (${inactive30Days.length} คน)`, value: formatList(inactive30Days), inline: false }
+                )
+                .setFooter({ text: `คำสั่งโดย: ${message.author.tag}` })
+                .setTimestamp();
+
+            const logChannel = LOG_CHANNEL_ID ? guild.channels.cache.get(LOG_CHANNEL_ID) : null;
+
+            if (logChannel) {
+                await logChannel.send({ embeds: [embed] });
+                await waitMsg.edit(`✅ ส่งรายชื่อและผลการตรวจสอบไปที่ห้องปฏิบัติการ <#${LOG_CHANNEL_ID}> เรียบร้อยแล้ว!`);
+            } else {
+                await waitMsg.edit({ content: '⚠️ ไม่พบการตั้งค่า `LOG_CHANNEL_ID` ผลลัพธ์จึงแสดงในห้องนี้:', embeds: [embed] });
+            }
+
+        } catch (error) {
+            console.error('Error in !status command:', error);
+            await waitMsg.edit('❌ เกิดข้อผิดพลาดขณะประมวลผลข้อมูล');
+        }
+    }
+});
+
+client.login(process.env.DISCORD_TOKEN);
