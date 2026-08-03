@@ -1037,7 +1037,7 @@ client.on('messageCreate', async (message) => {
     if (config) {
         const roleId = typeof config === 'string' ? config : config.roleId;
 
-        if (message.content.trim() === '.' || message.content.length > 0) {
+        if (message.content.trim() === '.') {
             try {
                 const role = message.guild.roles.cache.get(roleId);
                 if (!role) return;
@@ -1165,4 +1165,4 @@ client.on('messageCreate', async (message) => {
     }
 });
 
-client.login(process.env.DISCORD_TOKEN);
+client.login(TOKEN);
