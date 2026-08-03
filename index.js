@@ -38,7 +38,7 @@ const STAFF_LOG_CHANNEL_ID = process.env.STAFF_LOG_CHANNEL_ID || process.env.REP
 client.dotRoleConfigs = client.dotRoleConfigs || new Map();
 client.boostConfigs = client.boostConfigs || new Map();
 client.welcomeConfigs = client.welcomeConfigs || new Map();
-client.staffApplyConfigs = client.staffApplyConfigs || new Map(); // เก็บการตั้งค่าตำแหน่งสมัคร
+client.staffApplyConfigs = client.staffApplyConfigs || new Map(); // เก็บการตั้งค่าตำแหน่งสมัคร + กำหนดการเปิด/ปิด
 
 // 🛠️ ฟังก์ชันแปลงข้อความที่มีตัวแปร {}
 function parseCustomTags(text, guild, member) {
@@ -256,10 +256,15 @@ const commands = [
                 .setDescription('ลิงก์รูปภาพ Banner (ถ้ามี)')
                 .setRequired(false)),
 
+    // 🌟 อัปเดตคำสั่งเปิดรับสมัครทีมงาน พร้อมเลือกห้องประกาศ และระบุวันปิดรับสมัคร
     new SlashCommandBuilder()
         .setName('setup-staff-apply')
-        .setDescription('ตั้งค่าและเปิดระบบสมัครทีมงาน')
+        .setDescription('ประกาศเปิดรับสมัครทีมงาน พร้อมกำหนดวันปิดรับสมัคร')
         .setDefaultMemberPermissions(PermissionFlagsBits.Administrator)
+        .addChannelOption(option =>
+            option.setName('channel')
+                .setDescription('เลือกช่องที่จะส่งประกาศเปิดรับสมัคร')
+                .setRequired(true))
         .addStringOption(option =>
             option.setName('positions')
                 .setDescription('ระบุตำแหน่ง คั่นด้วยจุลภาค เช่น Moderator,Support,Admin')
@@ -267,6 +272,10 @@ const commands = [
         .addStringOption(option =>
             option.setName('roles')
                 .setDescription('ระบุ ID ยศที่จะได้รับตรงกับตำแหน่งตามลำดับ คั่นด้วยจุลภาค')
+                .setRequired(true))
+        .addStringOption(option =>
+            option.setName('end_date')
+                .setDescription('วันที่ปิดรับสมัคร (รูปแบบ DD/MM/YYYY เช่น 25/12/2026)')
                 .setRequired(true))
         .addStringOption(option =>
             option.setName('title')
@@ -284,6 +293,12 @@ const commands = [
             option.setName('color')
                 .setDescription('โค้ดสี HEX เช่น #5865F2')
                 .setRequired(false)),
+
+    // 🌟 คำสั่งสำหรับปิดรับสมัครทันที
+    new SlashCommandBuilder()
+        .setName('close-staff-apply')
+        .setDescription('สั่งปิดรับสมัครทีมงานทันที')
+        .setDefaultMemberPermissions(PermissionFlagsBits.Administrator),
 ].map(command => command.toJSON());
 
 const rest = new REST({ version: '10' }).setToken(TOKEN);
@@ -675,19 +690,31 @@ client.on('interactionCreate', async (interaction) => {
                 }
             }
 
-            // 🌟 HANDLER: ตั้งค่าระบบสมัครทีมงาน
+            // 🌟 HANDLER: ประกาศเปิดรับสมัครทีมงาน (พร้อมเลือกห้อง และตั้งกำหนดการปิดรับ)
             if (interaction.commandName === 'setup-staff-apply') {
                 await interaction.deferReply({ ephemeral: true });
 
+                const targetChannel = interaction.options.getChannel('channel');
                 const rawPositions = interaction.options.getString('positions').split(',').map(p => p.trim());
                 const rawRoles = interaction.options.getString('roles').split(',').map(r => r.trim());
-                const title = interaction.options.getString('title') || '📋 แบบฟอร์มสมัครเข้าร่วมทีมงาน';
+                const endDateStr = interaction.options.getString('end_date').trim(); // รูปแบบ DD/MM/YYYY
+                const title = interaction.options.getString('title') || '📢 ประกาศเปิดรับสมัครทีมงานใหม่';
                 const description = interaction.options.getString('description') || 'หากคุณมีความสนใจอยากเข้ามาเป็นส่วนหนึ่งในการดูแลเซิร์ฟเวอร์ สามารถกดปุ่มด้านล่างเพื่อเลือกตำแหน่งและกรอกใบสมัครได้ทันที!';
                 const bannerUrl = interaction.options.getString('banner_url') || null;
-                const colorHex = interaction.options.getString('color') || '#5865F2';
+                const colorHex = interaction.options.getString('color') || '#2ECC71';
 
                 if (rawPositions.length !== rawRoles.length) {
                     return await interaction.editReply({ content: '❌ จำนวนตำแหน่ง และ ID ยศ ต้องมีจำนวนเท่ากันและตรงกัน!' });
+                }
+
+                // แปลงรูปแบบวันที่ DD/MM/YYYY
+                const dateParts = endDateStr.split('/');
+                if (dateParts.length !== 3) {
+                    return await interaction.editReply({ content: '❌ รูปแบบวันที่ปิดรับสมัครไม่ถูกต้อง! กรุณาใช้รูปแบบ DD/MM/YYYY (เช่น 25/12/2026)' });
+                }
+                const parsedDate = new Date(`${dateParts[2]}-${dateParts[1]}-${dateParts[0]}T23:59:59`);
+                if (isNaN(parsedDate.getTime())) {
+                    return await interaction.editReply({ content: '❌ วันที่ปิดรับสมัครไม่ถูกต้อง กรุณาตรวจสอบอีกครั้ง' });
                 }
 
                 const positionData = rawPositions.map((pos, idx) => ({
@@ -695,16 +722,30 @@ client.on('interactionCreate', async (interaction) => {
                     roleId: rawRoles[idx]
                 }));
 
-                client.staffApplyConfigs.set(interaction.guild.id, positionData);
+                // บันทึกสถานะการเปิดรับสมัครลงในระบบ
+                client.staffApplyConfigs.set(interaction.guild.id, {
+                    isOpen: true,
+                    endDate: parsedDate,
+                    endDateStr: endDateStr,
+                    positions: positionData
+                });
 
                 const embed = new EmbedBuilder()
                     .setTitle(title)
                     .setDescription(description)
                     .setColor(colorHex)
-                    .addFields({ 
-                        name: '📌 ตำแหน่งที่เปิดรับสมัคร', 
-                        value: positionData.map(p => `• **${p.label}** (<@&${p.roleId}>)`).join('\n') 
-                    })
+                    .addFields(
+                        { 
+                            name: '📌 ตำแหน่งที่เปิดรับสมัคร', 
+                            value: positionData.map(p => `• **${p.label}** (<@&${p.roleId}>)`).join('\n'),
+                            inline: false
+                        },
+                        {
+                            name: '📅 กำหนดรับสมัครถึงวันที่',
+                            value: `\` ${endDateStr} \` (เวลา 23:59 น.)`,
+                            inline: false
+                        }
+                    )
                     .setFooter({ text: `${interaction.guild.name} • Staff Recruitment` })
                     .setTimestamp();
 
@@ -717,12 +758,27 @@ client.on('interactionCreate', async (interaction) => {
                     .setLabel('📝 กรอกใบสมัครทีมงาน')
                     .setStyle(ButtonStyle.Success);
 
-                await interaction.channel.send({
+                await targetChannel.send({
                     embeds: [embed],
                     components: [new ActionRowBuilder().addComponents(btn)]
                 });
 
-                return await interaction.editReply({ content: '✅ สร้างระบบสมัครทีมงานเรียบร้อยแล้ว!' });
+                return await interaction.editReply({ content: `✅ ส่งประกาศเปิดรับสมัครทีมงานไปยังห้อง <#${targetChannel.id}> เรียบร้อยแล้ว! (รับสมัครถึงวันที่: ${endDateStr})` });
+            }
+
+            // 🌟 HANDLER: คำสั่งสั่งปิดรับสมัครล่วงหน้า
+            if (interaction.commandName === 'close-staff-apply') {
+                await interaction.deferReply({ ephemeral: true });
+
+                const configData = client.staffApplyConfigs.get(interaction.guild.id);
+                if (!configData) {
+                    return await interaction.editReply({ content: '❌ ยังไม่มีการตั้งค่าการรับสมัครทีมงานในเซิร์ฟเวอร์นี้' });
+                }
+
+                configData.isOpen = false;
+                client.staffApplyConfigs.set(interaction.guild.id, configData);
+
+                return await interaction.editReply({ content: '🔒 **สั่งปิดรับสมัครทีมงานเรียบร้อยแล้ว!** สมาชิกที่กดสมัครหลังจากนี้จะได้รับแจ้งเตือนว่าปิดรับสมัครแล้ว' });
             }
         }
 
@@ -799,17 +855,30 @@ client.on('interactionCreate', async (interaction) => {
                 return await interaction.showModal(modal);
             }
 
-            // 🌟 ปุ่มเริ่มกรอกใบสมัคร -> แสดง Dropdown เลือกตำแหน่ง
+            // 🌟 ปุ่มเริ่มกรอกใบสมัคร -> ตรวจสอบสถานะวันหมดอายุและสถานะการเปิดรับสมัคร
             if (interaction.customId === 'btn_start_staff_apply') {
-                const config = client.staffApplyConfigs.get(interaction.guild.id);
-                if (!config || config.length === 0) {
+                const configData = client.staffApplyConfigs.get(interaction.guild.id);
+
+                // ตรวจสอบว่าระบบปิดรับสมัคร หรือเลยกำหนดเวลาวันที่ปิดรับหรือยัง
+                const now = new Date();
+                const isClosed = !configData || !configData.isOpen || (configData.endDate && now > configData.endDate);
+
+                if (isClosed) {
+                    return await interaction.reply({
+                        content: '🔒 **ขออภัย ขณะนี้ระบบปิดรับสมัครทีมงานแล้ว** (หรือหมดระยะเวลาการรับสมัครแล้ว)',
+                        ephemeral: true
+                    });
+                }
+
+                const positions = configData.positions || [];
+                if (positions.length === 0) {
                     return await interaction.reply({ content: '❌ ไม่พบข้อมูลตำแหน่งที่เปิดรับสมัคร', ephemeral: true });
                 }
 
                 const menu = new StringSelectMenuBuilder()
                     .setCustomId('select_staff_position')
                     .setPlaceholder('▼ เลือกตำแหน่งที่คุณต้องการสมัคร')
-                    .addOptions(config.map((p, index) => new StringSelectMenuOptionBuilder().setLabel(p.label).setValue(`${index}`)));
+                    .addOptions(positions.map((p, index) => new StringSelectMenuOptionBuilder().setLabel(p.label).setValue(`${index}`)));
 
                 return await interaction.reply({
                     content: '📌 กรุณาเลือกตำแหน่งที่ต้องการสมัครจากรายการด้านล่าง:',
@@ -834,8 +903,9 @@ client.on('interactionCreate', async (interaction) => {
                 const posField = originalEmbed.fields.find(f => f.name.includes('สมัครตำแหน่ง'));
                 const posName = posField ? posField.value.replace(/`/g, '').trim() : 'ทีมงาน';
                 
-                const config = client.staffApplyConfigs.get(interaction.guild.id) || [];
-                const matchedPos = config.find(p => p.label === posName);
+                const configData = client.staffApplyConfigs.get(interaction.guild.id);
+                const positions = configData ? configData.positions : [];
+                const matchedPos = positions.find(p => p.label === posName);
 
                 if (isPass) {
                     if (targetMember && matchedPos && matchedPos.roleId) {
@@ -1009,13 +1079,14 @@ client.on('interactionCreate', async (interaction) => {
                 return await interaction.editReply({ content: `✅ ดำเนินการแบน <@${targetId}> ระยะเวลา \`${durationStr}\` เรียบร้อย!` });
             }
 
-            // 🌟 บันทึกแบบฟอร์มสมัครทีมงาน -> ส่งเข้าห้องตรวจ (จัดเรียงเรียบร้อยสวยงาม)
+            // 🌟 บันทึกแบบฟอร์มสมัครทีมงาน -> ส่งเข้าห้องตรวจ
             if (interaction.customId.startsWith('modal_staff_submit_')) {
                 await interaction.deferReply({ ephemeral: true });
 
                 const posIndex = parseInt(interaction.customId.replace('modal_staff_submit_', ''));
-                const config = client.staffApplyConfigs.get(interaction.guild.id) || [];
-                const targetPos = config[posIndex] || { label: 'ไม่ได้ระบุ', roleId: null };
+                const configData = client.staffApplyConfigs.get(interaction.guild.id);
+                const positions = configData ? configData.positions : [];
+                const targetPos = positions[posIndex] || { label: 'ไม่ได้ระบุ', roleId: null };
 
                 const nickname = interaction.fields.getTextInputValue('st_nickname');
                 const age = interaction.fields.getTextInputValue('st_age');
