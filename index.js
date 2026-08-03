@@ -13,7 +13,8 @@ const {
     REST,
     Routes,
     SlashCommandBuilder,
-    PermissionFlagsBits
+    PermissionFlagsBits,
+    PermissionsBitField
 } = require('discord.js');
 
 const client = new Client({
@@ -64,6 +65,29 @@ function parseCustomTags(text, guild, member) {
     });
 
     return parsedText;
+}
+
+// 🔒 ฟังก์ชันปิดกั้นสิทธิ์ยศแบนไม่ให้พิมพ์หรือคุยเสียงทั่วทั้ง Server อัตโนมัติ
+async function lockServerForBannedRole(guild, roleId) {
+    if (!roleId) return;
+    try {
+        const channels = await guild.channels.fetch();
+        channels.forEach(async (channel) => {
+            if (!channel) return;
+            await channel.permissionOverwrites.edit(roleId, {
+                SendMessages: false,
+                SendMessagesInThreads: false,
+                AddReactions: false,
+                Speak: false,
+                Connect: false,
+                UseSoundboard: false,
+                UseExternalEmojis: false,
+                UseApplicationCommands: false
+            }).catch(() => null);
+        });
+    } catch (err) {
+        console.error('❌ ไม่สามารถอัปเดตสิทธิ์ห้องสำหรับยศแบนได้:', err);
+    }
 }
 
 // 1. Slash Commands Definition
@@ -231,7 +255,6 @@ const commands = [
                 .setDescription('ใส่ลิงก์รูปภาพ Banner ใน Embed (ถ้ามี)')
                 .setRequired(false)),
 
-    // 🚀 เพิ่มระบบ Dropdown ไม่จำกัดยศ (ออโต้แบ่งกลุ่ม 25 ยศ/แถว)
     new SlashCommandBuilder()
         .setName('setup_dropdown')
         .setDescription('เพิ่ม Dropdown เลือกยศแบบไม่จำกัดใส่ข้อความเดิม')
@@ -266,7 +289,6 @@ client.on('ready', async () => {
     }
 });
 
-// Helper สร้าง Modal
 function createSetupModal(customId, title, defaultTitle, defaultDesc, defaultBtn) {
     const modal = new ModalBuilder().setCustomId(customId).setTitle(title);
     
@@ -557,7 +579,6 @@ client.on('interactionCreate', async (interaction) => {
                 return await interaction.showModal(modal);
             }
 
-            // 🚀 HANDLER: setup_dropdown แบบรับยศไม่จำกัด (สูงสุด 125 ยศ/ข้อความ)
             if (interaction.commandName === 'setup_dropdown') {
                 await interaction.deferReply({ ephemeral: true });
 
@@ -575,7 +596,6 @@ client.on('interactionCreate', async (interaction) => {
                     return await interaction.editReply({ content: '❌ หาข้อความไม่พบ! กรุณาตรวจสอบ ID ข้อความอีกครั้ง' });
                 }
 
-                // กรองยศที่มีจริงในเซิร์ฟเวอร์
                 const validRoles = [];
                 for (const id of rawRoleIds) {
                     const role = interaction.guild.roles.cache.get(id);
@@ -586,7 +606,6 @@ client.on('interactionCreate', async (interaction) => {
                     return await interaction.editReply({ content: '❌ ไม่พบยศที่ระบุในเซิร์ฟเวอร์ กรุณาเช็ก ID ของยศให้ถูกต้อง' });
                 }
 
-                // หั่นยศออกเป็นกลุ่มละ 25 ยศ (จำกัดของ Discord คือ 25 ตัวเลือก/1 Dropdown, สูงสุด 5 Dropdowns = 125 ยศ)
                 const roleChunks = [];
                 for (let i = 0; i < validRoles.length; i += 25) {
                     roleChunks.push(validRoles.slice(i, i + 25));
@@ -823,6 +842,7 @@ client.on('interactionCreate', async (interaction) => {
                 });
             }
 
+            // 🔨 MODAL SUBMIT: จัดการระบบแบน ยศอัตโนมัติ การนับเวลาถอยหลัง และการจำกัดสิทธิ์ในดิส
             if (interaction.customId.startsWith('modal_admin_ban_time_')) {
                 await interaction.deferReply({ ephemeral: true });
 
@@ -831,31 +851,79 @@ client.on('interactionCreate', async (interaction) => {
                 const tempData = client.adminTempData?.get(targetId) || { reason: 'ไม่ได้ระบุ', problem: 'ไม่ได้ระบุ' };
                 const targetMember = await interaction.guild.members.fetch(targetId).catch(() => null);
 
-                if (!targetMember) return interaction.editReply({ content: '❌ ไม่พบผู้ใช้คนนี้แล้ว' });
+                if (!targetMember) return interaction.editReply({ content: '❌ ไม่พบผู้ใช้คนนี้ในเซิร์ฟเวอร์แล้ว' });
 
-                if (BANNED_ROLE_ID) await targetMember.roles.add(BANNED_ROLE_ID).catch(() => null);
-
+                // คำนวณระยะเวลา (ms)
                 let ms = 0;
                 if (durationStr.endsWith('d')) ms = parseInt(durationStr) * 24 * 60 * 60 * 1000;
                 else if (durationStr.endsWith('h')) ms = parseInt(durationStr) * 60 * 60 * 1000;
                 else if (durationStr.endsWith('m')) ms = parseInt(durationStr) * 60 * 1000;
 
-                if (ms > 0) await targetMember.timeout(ms, tempData.reason).catch(() => null);
+                if (ms <= 0) return interaction.editReply({ content: '❌ รูปแบบเวลาไม่ถูกต้อง! กรุณาระบุ เช่น 1d, 12h, 30m' });
 
+                const now = Date.now();
+                const unbanTime = Math.floor((now + ms) / 1000); // Unix Timestamp สำหรับนับเวลาถอยหลัง
+
+                // 1. มอบยศถูกแบนอัตโนมัติ
+                if (BANNED_ROLE_ID) {
+                    await targetMember.roles.add(BANNED_ROLE_ID).catch(err => console.error('ไม่สามารถให้ยศแบนได้:', err));
+                    
+                    // ปิดกั้นสิทธิ์พิมพ์/ส่งเสียงของยศนี้ทั่วทั้ง Server
+                    await lockServerForBannedRole(interaction.guild, BANNED_ROLE_ID);
+                }
+
+                // 2. ตั้งระบบ Timeout ของ Discord ด้วย
+                await targetMember.timeout(ms, tempData.reason).catch(() => null);
+
+                // 3. ระบบปลดแบนอัตโนมัติเมื่อครบกำหนดวัน/เวลา
+                setTimeout(async () => {
+                    try {
+                        const memberToUnban = await interaction.guild.members.fetch(targetId).catch(() => null);
+                        if (memberToUnban && BANNED_ROLE_ID) {
+                            await memberToUnban.roles.remove(BANNED_ROLE_ID).catch(() => null);
+                            await memberToUnban.timeout(null).catch(() => null);
+
+                            const banLogChan = interaction.guild.channels.cache.get(BAN_LOG_CHANNEL_ID || REPORT_LOG_CHANNEL_ID);
+                            if (banLogChan) {
+                                const unbanEmbed = new EmbedBuilder()
+                                    .setTitle('🔓 ประกาศปลดแบนอัตโนมัติ')
+                                    .setColor(0x2ECC71)
+                                    .setDescription(`✨ สมาชิก <@${targetId}> หมดระยะเวลาลงโทษแล้ว ระบบได้ทำการปลดแบนและถอดยศให้อัตโนมัติเรียบร้อย!`)
+                                    .setTimestamp();
+
+                                await banLogChan.send({ content: `🔔 <@${targetId}>`, embeds: [unbanEmbed] });
+                            }
+                        }
+                    } catch (e) {
+                        console.error('Error auto-unbanning:', e);
+                    }
+                }, ms);
+
+                // 4. ส่ง Embed ประกาศการแบน + แท็กสมาชิก + นับเวลาถอยหลัง
                 const banLogChan = interaction.guild.channels.cache.get(BAN_LOG_CHANNEL_ID || REPORT_LOG_CHANNEL_ID);
                 const banEmbed = new EmbedBuilder()
-                    .setTitle('🔨 ประกาศสมาชิกโดนแบน')
+                    .setTitle('🔨 ประกาศสมาชิกโดนแบน / ลงโทษ')
                     .setColor(0xFF0000)
+                    .setThumbnail(targetMember.user.displayAvatarURL({ dynamic: true }))
                     .addFields(
-                        { name: 'ผู้ถูกลงโทษ', value: `<@${targetMember.id}>`, inline: false },
-                        { name: 'ระยะเวลา', value: durationStr, inline: true },
-                        { name: 'เหตุผล', value: tempData.reason, inline: true },
-                        { name: 'ปัญหาที่พบ', value: tempData.problem, inline: false },
-                        { name: 'ผู้อนุมัติ', value: `<@${interaction.user.id}>`, inline: false }
-                    ).setThumbnail(targetMember.user.displayAvatarURL()).setTimestamp();
+                        { name: '👤 ผู้ถูกลงโทษ', value: `<@${targetMember.id}> (\`${targetMember.id}\`)`, inline: false },
+                        { name: '⏱️ ระยะเวลาแบน', value: `\`${durationStr}\``, inline: true },
+                        { name: '⏳ ปลดแบนในอีก', value: `<t:${unbanTime}:R> (<t:${unbanTime}:F>)`, inline: true },
+                        { name: '📝 เหตุผลการแบน', value: tempData.reason, inline: false },
+                        { name: '⚠️ ปัญหาที่พบ', value: tempData.problem, inline: false },
+                        { name: '🛡️ ผู้อนุมัติการแบน', value: `<@${interaction.user.id}>`, inline: false }
+                    )
+                    .setFooter({ text: `${interaction.guild.name} • ระบบการลงโทษอัตโนมัติ`, iconURL: interaction.guild.iconURL({ dynamic: true }) })
+                    .setTimestamp();
 
-                if (banLogChan) await banLogChan.send({ embeds: [banEmbed] });
-                return await interaction.editReply({ content: `✅ ดำเนินการแบน <@${targetId}> ระยะเวลา \`${durationStr}\` เรียบร้อย!` });
+                if (banLogChan) {
+                    await banLogChan.send({ 
+                        content: `🚨 **ประกาศลงโทษสมาชิก:** <@${targetMember.id}>`, 
+                        embeds: [banEmbed] 
+                    });
+                }
+
+                return await interaction.editReply({ content: `✅ ดำเนินการแบน <@${targetId}> เป็นเวลา \`${durationStr}\` และตั้งค่านับเวลาถอยหลังเรียบร้อยแล้ว!` });
             }
         }
 
@@ -868,34 +936,46 @@ client.on('interactionCreate', async (interaction) => {
 
                 if (!targetMember) return interaction.update({ content: '❌ ไม่พบผู้ใช้คนนี้แล้ว', components: [] });
 
+                // ⛔ ระบบ BLACKLIST: บันทึกข้อมูล ส่ง Embed แท็กสมาชิก แล้วเตะออกทันที
                 if (selectedOption === 'admin_penalty_blacklist') {
-                    const blacklistChan = interaction.guild.channels.cache.get(BLACKLIST_CHANNEL_ID);
+                    const blacklistChan = interaction.guild.channels.cache.get(BLACKLIST_CHANNEL_ID || REPORT_LOG_CHANNEL_ID);
+                    
                     const blacklistEmbed = new EmbedBuilder()
                         .setTitle('⛔ ประกาศรายชื่อบัญชีดำ (Blacklist)')
                         .setColor(0x000000)
+                        .setThumbnail(targetMember.user.displayAvatarURL({ dynamic: true }))
                         .addFields(
-                            { name: 'ผู้ถูกบันทึก', value: `${targetMember.user.tag} (${targetMember.id})`, inline: false },
-                            { name: 'เหตุผล', value: tempData.reason, inline: false },
-                            { name: 'ปัญหาที่พบ', value: tempData.problem, inline: false },
-                            { name: 'โดยแอดมิน', value: `<@${interaction.user.id}>`, inline: false }
-                        ).setThumbnail(targetMember.user.displayAvatarURL()).setTimestamp();
+                            { name: '👤 ผู้ถูกลงบัญชีดำ', value: `<@${targetMember.id}> (\`${targetMember.user.tag}\`)`, inline: false },
+                            { name: '📝 เหตุผล', value: tempData.reason, inline: false },
+                            { name: '⚠️ ปัญหาที่พบ', value: tempData.problem, inline: false },
+                            { name: '🛡️ ดำเนินการโดย', value: `<@${interaction.user.id}>`, inline: false },
+                            { name: '📌 สถานะ', value: '` เตะออกจากเซิร์ฟเวอร์เรียบร้อยแล้ว (Kicked) `', inline: false }
+                        )
+                        .setFooter({ text: `${interaction.guild.name} • ระบบจัดการบัญชีดำ`, iconURL: interaction.guild.iconURL({ dynamic: true }) })
+                        .setTimestamp();
 
-                    if (blacklistChan) await blacklistChan.send({ embeds: [blacklistEmbed] });
-                    await targetMember.kick(`[Blacklist] ${tempData.reason}`).catch(() => null);
+                    if (blacklistChan) {
+                        await blacklistChan.send({ 
+                            content: `⛔ **ประกาศติด BLACKLIST:** <@${targetMember.id}>`, 
+                            embeds: [blacklistEmbed] 
+                        });
+                    }
 
-                    return await interaction.update({ content: `⛔ บันทึก <@${targetId}> ลงบัญชีดำและเตะออกเรียบร้อย!`, components: [] });
+                    // เตะออกจากเซิร์ฟเวอร์อัตโนมัติ
+                    await targetMember.kick(`[Blacklist] ${tempData.reason}`).catch(err => console.error('ไม่สามารถเตะผู้ใช้ได้:', err));
+
+                    return await interaction.update({ content: `⛔ บันทึก <@${targetId}> ลงบัญชีดำ แท็กแจ้งเตือน และทำการเตะออกจากเซิร์ฟเวอร์เรียบร้อยแล้ว!`, components: [] });
                 }
 
                 if (selectedOption === 'admin_penalty_ban') {
                     const modal = new ModalBuilder().setCustomId(`modal_admin_ban_time_${targetId}`).setTitle('⏱️ กำหนดระยะเวลาการแบน');
-                    const durationInput = new TextInputBuilder().setCustomId('ban_duration').setLabel('ระบุระยะเวลา (เช่น 1d = 1วัน, 12h = 12ชม.)').setPlaceholder('ตัวอย่าง: 7d หรือ 24h').setStyle(TextInputStyle.Short).setRequired(true);
+                    const durationInput = new TextInputBuilder().setCustomId('ban_duration').setLabel('ระบุระยะเวลา (เช่น 1d = 1วัน, 12h = 12ชม., 30m = 30นาที)').setPlaceholder('ตัวอย่าง: 7d หรือ 24h').setStyle(TextInputStyle.Short).setRequired(true);
 
                     modal.addComponents(new ActionRowBuilder().addComponents(durationInput));
                     return await interaction.showModal(modal);
                 }
             }
 
-            // 🟢 HANDLER: ตรวจจับการกดเลือก Dropdown ไม่จำกัดยศ
             if (interaction.customId.startsWith('select_unlimited_roles_')) {
                 await interaction.deferReply({ ephemeral: true });
 
@@ -904,14 +984,12 @@ client.on('interactionCreate', async (interaction) => {
                 const allMenuRoleIds = interaction.component.options.map(opt => opt.value);
 
                 try {
-                    // ถอดยศที่ไม่ได้เลือกออก (เฉพาะยศที่มีอยู่ในเมนูนี้)
                     for (const roleId of allMenuRoleIds) {
                         if (!selectedRoleIds.includes(roleId) && member.roles.cache.has(roleId)) {
                             await member.roles.remove(roleId).catch(() => null);
                         }
                     }
 
-                    // เพิ่มยศที่ถูกเลือก
                     for (const roleId of selectedRoleIds) {
                         if (!member.roles.cache.has(roleId)) {
                             await member.roles.add(roleId).catch(() => null);
@@ -1029,7 +1107,7 @@ client.on('guildMemberUpdate', async (oldMember, newMember) => {
     }
 });
 
-// 🔴 ระบบพิมพ์จุด (.) รับยศ & คำสั่ง !status (แก้ไขแล้ว ให้ส่ง Embed ผลลัพธ์ทุกครั้ง)
+// 🔴 ระบบพิมพ์จุด (.) รับยศ & คำสั่ง !status
 client.on('messageCreate', async (message) => {
     if (message.author.bot || !message.guild) return;
 
@@ -1042,7 +1120,6 @@ client.on('messageCreate', async (message) => {
                 const role = message.guild.roles.cache.get(roleId);
                 if (!role) return;
 
-                // เพิ่มยศถ้าผู้ใช้ยังไม่มี (ถ้ามีแล้วจะไม่เพิ่มซ้ำ แต่ยังทำงานส่ง Embed ต่อไป)
                 if (!message.member.roles.cache.has(roleId)) {
                     await message.member.roles.add(role).catch(() => null);
                 }
