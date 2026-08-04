@@ -37,7 +37,7 @@ client.dotRoleConfigs = client.dotRoleConfigs || new Map();
 client.boostConfigs = client.boostConfigs || new Map();
 client.welcomeConfigs = client.welcomeConfigs || new Map();
 
-// 📌 เก็บข้อมูลการประกาศรับสมัครทีมงาน และข้อมูลใบสมัครชั่วคราว
+// 📌 เก็บข้อมูลการประกาศรับสมัครทีมงาน และใบสมัครชั่วคราว
 client.staffAnnounceData = client.staffAnnounceData || new Map();
 client.staffApplications = client.staffApplications || new Map();
 
@@ -71,7 +71,7 @@ function parseCustomTags(text, guild, member) {
     return parsedText;
 }
 
-// 🔒 ฟังก์ชันปิดกั้นสิทธิ์ยศแบนไม่ให้พิมพ์หรือคุยเสียงทั่วทั้ง Server อัตโนมัติ
+// 🔒 ฟังก์ชันปิดกั้นสิทธิ์ยศแบนไม่ให้พิมพ์หรือคุยเสียงทั่วทั้ง Server
 async function lockServerForBannedRole(guild, roleId) {
     if (!roleId) return;
     try {
@@ -152,15 +152,15 @@ const commands = [
                 .setRequired(true))
         .addStringOption(option =>
             option.setName('title')
-                .setDescription('หัวข้อ Embed (ใช้ {user}, {guild} ได้)')
+                .setDescription('หัวข้อ Embed')
                 .setRequired(false))
         .addStringOption(option =>
             option.setName('description')
-                .setDescription('ข้อความ Embed (ใช้ {user}, {#ห้อง}, {@ยศ}, {guild}, {boosts} ได้)')
+                .setDescription('ข้อความ Embed')
                 .setRequired(false))
         .addStringOption(option =>
             option.setName('content_message')
-                .setDescription('ข้อความแจ้งเตือนนอก Embed (ใช้ {user}, {@ยศ} แท็กคนได้หมด)')
+                .setDescription('ข้อความแจ้งเตือนนอก Embed')
                 .setRequired(false))
         .addStringOption(option =>
             option.setName('banner_url')
@@ -186,15 +186,15 @@ const commands = [
                 .setRequired(true))
         .addStringOption(option =>
             option.setName('title')
-                .setDescription('หัวข้อ Embed (ใช้ {user}, {guild}, {username} ได้)')
+                .setDescription('หัวข้อ Embed')
                 .setRequired(false))
         .addStringOption(option =>
             option.setName('description')
-                .setDescription('ข้อความ Embed (ใช้ {user}, {guild}, {memberCount}, {#ห้อง}, {@ยศ} ได้)')
+                .setDescription('ข้อความ Embed')
                 .setRequired(false))
         .addStringOption(option =>
             option.setName('content_message')
-                .setDescription('ข้อความข้อความนอก Embed (เช่น แท็กคน {user})')
+                .setDescription('ข้อความข้อความนอก Embed')
                 .setRequired(false))
         .addStringOption(option =>
             option.setName('banner_url')
@@ -202,7 +202,7 @@ const commands = [
                 .setRequired(false))
         .addStringOption(option =>
             option.setName('color')
-                .setDescription('โค้ดสี HEX เช่น #5865F2 หรือ GREEN')
+                .setDescription('โค้ดสี HEX')
                 .setRequired(false)),
 
     new SlashCommandBuilder()
@@ -212,38 +212,20 @@ const commands = [
 
     new SlashCommandBuilder()
         .setName('setup_buttons')
-        .setDescription('เพิ่มปุ่มกดรับยศใส่ข้อความเดิม (ส่งจากห้องไหนก็ได้)')
+        .setDescription('เพิ่มปุ่มกดรับยศใส่ข้อความเดิม')
         .setDefaultMemberPermissions(PermissionFlagsBits.Administrator)
-        .addChannelOption(option =>
-            option.setName('channel')
-                .setDescription('เลือกห้องที่ข้อความนั้นอยู่')
-                .setRequired(true))
-        .addStringOption(option =>
-            option.setName('message_id')
-                .setDescription('ID ของข้อความเดิมที่ต้องการเพิ่มปุ่ม')
-                .setRequired(true))
-        .addRoleOption(option =>
-            option.setName('role1')
-                .setDescription('ยศที่ 1')
-                .setRequired(true))
-        .addStringOption(option =>
-            option.setName('label1')
-                .setDescription('ข้อความบนปุ่มที่ 1 (เช่น "รับยศสมาชิก")')
-                .setRequired(true))
-        .addStringOption(option =>
-            option.setName('style1')
-                .setDescription('สีปุ่มที่ 1')
-                .setRequired(false)
-                .addChoices(
-                    { name: '🔵 สีน้ำเงิน (Primary)', value: 'Primary' },
-                    { name: 'เพลน/เทา (Secondary)', value: 'Secondary' },
-                    { name: '🟢 สีเขียว (Success)', value: 'Success' },
-                    { name: '🔴 สีแดง (Danger)', value: 'Danger' }
-                ))
-        .addStringOption(option =>
-            option.setName('emoji1')
-                .setDescription('Emoji ปุ่มที่ 1 (เช่น ✨ หรือ 👑)')
-                .setRequired(false))
+        .addChannelOption(option => option.setName('channel').setDescription('เลือกห้อง').setRequired(true))
+        .addStringOption(option => option.setName('message_id').setDescription('ID ข้อความเดิม').setRequired(true))
+        .addRoleOption(option => option.setName('role1').setDescription('ยศที่ 1').setRequired(true))
+        .addStringOption(option => option.setName('label1').setDescription('ข้อความบนปุ่มที่ 1').setRequired(true))
+        .addStringOption(option => option.setName('style1').setDescription('สีปุ่มที่ 1').setRequired(false)
+            .addChoices(
+                { name: '🔵 สีน้ำเงิน (Primary)', value: 'Primary' },
+                { name: 'เพลน/เทา (Secondary)', value: 'Secondary' },
+                { name: '🟢 สีเขียว (Success)', value: 'Success' },
+                { name: '🔴 สีแดง (Danger)', value: 'Danger' }
+            ))
+        .addStringOption(option => option.setName('emoji1').setDescription('Emoji ปุ่มที่ 1').setRequired(false))
         .addRoleOption(option => option.setName('role2').setDescription('ยศที่ 2').setRequired(false))
         .addStringOption(option => option.setName('label2').setDescription('ข้อความบนปุ่มที่ 2').setRequired(false))
         .addStringOption(option => option.setName('style2').setDescription('สีปุ่มที่ 2').setRequired(false)
@@ -264,31 +246,16 @@ const commands = [
                 { name: '🔴 สีแดง', value: 'Danger' }
             ))
         .addStringOption(option => option.setName('emoji3').setDescription('Emoji ปุ่มที่ 3').setRequired(false))
-        .addStringOption(option =>
-            option.setName('image_url')
-                .setDescription('ใส่ลิงก์รูปภาพ Banner ใน Embed (ถ้ามี)')
-                .setRequired(false)),
+        .addStringOption(option => option.setName('image_url').setDescription('ลิงก์รูปภาพ Banner').setRequired(false)),
 
     new SlashCommandBuilder()
         .setName('setup_dropdown')
         .setDescription('เพิ่ม Dropdown เลือกยศแบบไม่จำกัดใส่ข้อความเดิม')
         .setDefaultMemberPermissions(PermissionFlagsBits.Administrator)
-        .addStringOption(option =>
-            option.setName('message_id')
-                .setDescription('ID ของข้อความเดิมที่ต้องการใส่ Dropdown')
-                .setRequired(true))
-        .addStringOption(option =>
-            option.setName('role_ids')
-                .setDescription('ใส่ ID ของยศ คั่นด้วยเครื่องหมายจุลภาค (เช่น 1234567,8901234,5678901)')
-                .setRequired(true))
-        .addStringOption(option =>
-            option.setName('placeholder')
-                .setDescription('ข้อความตัวอย่างบน Dropdown')
-                .setRequired(false))
-        .addStringOption(option =>
-            option.setName('image_url')
-                .setDescription('ลิงก์รูปภาพ Banner (ถ้ามี)')
-                .setRequired(false)),
+        .addStringOption(option => option.setName('message_id').setDescription('ID ข้อความเดิม').setRequired(true))
+        .addStringOption(option => option.setName('role_ids').setDescription('ID ยศ คั่นด้วยจุลภาค').setRequired(true))
+        .addStringOption(option => option.setName('placeholder').setDescription('ข้อความบน Dropdown').setRequired(false))
+        .addStringOption(option => option.setName('image_url').setDescription('ลิงก์รูปภาพ Banner').setRequired(false)),
 ].map(command => command.toJSON());
 
 const rest = new REST({ version: '10' }).setToken(TOKEN);
@@ -325,12 +292,13 @@ client.on('interactionCreate', async (interaction) => {
     try {
         if (interaction.isChatInputCommand()) {
 
+            // 📢 คำสั่งสร้างระบบประกาศรับสมัครทีมงาน
             if (interaction.commandName === 'setup-staff-announce') {
-                const modal = new ModalBuilder().setCustomId('modal_staff_announce_config').setTitle('📢 ตั้งค่าประกาศรับสมัครทีมงาน');
-                const positionsInput = new TextInputBuilder().setCustomId('staff_positions').setLabel('1. ตำแหน่งที่รับ (คั่นด้วยจุลภาค ,)').setPlaceholder('เช่น Admin, Moderator, Builder').setStyle(TextInputStyle.Short).setRequired(true);
+                const modal = new ModalBuilder().setCustomId('modal_staff_announce_config').setTitle('📢 ประกาศรับสมัครทีมงาน');
+                const positionsInput = new TextInputBuilder().setCustomId('staff_positions').setLabel('1. ตำแหน่งที่รับ (คั่นด้วยจุลภาค ,)').setPlaceholder('เช่น Admin, Mod, Builder').setStyle(TextInputStyle.Short).setRequired(true);
                 const countsInput = new TextInputBuilder().setCustomId('staff_counts').setLabel('2. จำนวนที่รับ (คั่นด้วยจุลภาค ,)').setPlaceholder('เช่น 2, 5, 1').setStyle(TextInputStyle.Short).setRequired(true);
                 const endDateInput = new TextInputBuilder().setCustomId('staff_end_date').setLabel('3. เปิดรับถึงวันที่เท่าไหร่').setPlaceholder('เช่น 30 พฤศจิกายน 2026').setStyle(TextInputStyle.Short).setRequired(true);
-                const mainChanInput = new TextInputBuilder().setCustomId('staff_main_channel').setLabel('4. ID ช่องประกาศหลัก').setPlaceholder('ใส่ ID ช่องประกาศ').setStyle(TextInputStyle.Short).setRequired(true);
+                const mainChanInput = new TextInputBuilder().setCustomId('staff_main_channel').setLabel('4. ID ช่องประกาศหลัก').setPlaceholder('ใส่ ID ช่องประกาศหลัก').setStyle(TextInputStyle.Short).setRequired(true);
                 const recruitChanInput = new TextInputBuilder().setCustomId('staff_recruit_channel').setLabel('5. ID ช่องประกาศรับทีมงาน').setPlaceholder('ใส่ ID ช่องประกาศรับทีมงาน').setStyle(TextInputStyle.Short).setRequired(true);
 
                 modal.addComponents(
@@ -343,6 +311,7 @@ client.on('interactionCreate', async (interaction) => {
                 return await interaction.showModal(modal);
             }
 
+            // 📝 คำสั่งสร้างปุ่มกรอกใบสมัครทีมงาน (แยกต่างหาก)
             if (interaction.commandName === 'setup-staff-apply') {
                 await interaction.deferReply({ ephemeral: true });
 
@@ -407,7 +376,7 @@ client.on('interactionCreate', async (interaction) => {
                 const previewEmbed = new EmbedBuilder()
                     .setTitle('⚙️ ตั้งค่าระบบแจ้งเตือน Boost เรียบร้อย!')
                     .setColor(0x2ECC71)
-                    .setDescription(`ตั้งค่าการแจ้งเตือนไว้ที่ห้อง <#${targetChannel.id}> เรียบร้อยครับ!\n\n💡 **คุณสามารถพิมพ์ `/test-boost` เพื่อทดสอบระบบได้ทันที!**`)
+                    .setDescription(`ตั้งค่าการแจ้งเตือนไว้ที่ห้อง <#${targetChannel.id}> เรียบร้อยครับ!`)
                     .setTimestamp();
 
                 return await interaction.editReply({ embeds: [previewEmbed] });
@@ -419,14 +388,13 @@ client.on('interactionCreate', async (interaction) => {
                 const boostConfig = client.boostConfigs.get(interaction.guild.id) || {
                     channelId: interaction.channel.id,
                     title: '🚀 ขอบคุณสำหรับการ Server Boost!',
-                    description: '💖 ขอบคุณคุณ {user} มากๆ นะครับที่ช่วยสนับสนุนเซิร์ฟเวอร์ **{guild}**!\n\nแวะไปพูดคุยกับเพื่อนๆ ได้ที่ห้อง {#พูดคุย-ทั่วไป} หรือดูสิทธิ์พิเศษที่ยศ {@Booster} ได้เลย!',
+                    description: '💖 ขอบคุณคุณ {user} มากๆ นะครับที่ช่วยสนับสนุนเซิร์ฟเวอร์ **{guild}**!',
                     contentMessage: '🎉 **TEST BOOST!** ขอบคุณ {user} มากๆ ครับ! 🚀✨',
                     bannerUrl: null,
                     color: '#F47FFF'
                 };
 
                 const targetChan = interaction.guild.channels.cache.get(boostConfig.channelId) || interaction.channel;
-
                 const formattedTitle = parseCustomTags(boostConfig.title, interaction.guild, interaction.member);
                 const formattedDesc = parseCustomTags(boostConfig.description, interaction.guild, interaction.member);
                 const formattedContent = parseCustomTags(boostConfig.contentMessage, interaction.guild, interaction.member);
@@ -448,14 +416,8 @@ client.on('interactionCreate', async (interaction) => {
                     testEmbed.setImage(boostConfig.bannerUrl);
                 }
 
-                await targetChan.send({
-                    content: `⚠️ **[ข้อความทดสอบระบบ BOOST]**\n${formattedContent}`,
-                    embeds: [testEmbed]
-                }).catch(() => null);
-
-                return await interaction.editReply({ 
-                    content: `✅ ส่งข้อความทดสอบระบบ Boost ไปที่ห้อง <#${targetChan.id}> เรียบร้อยแล้วครับ!`
-                });
+                await targetChan.send({ content: `⚠️ **[ข้อความทดสอบระบบ BOOST]**\n${formattedContent}`, embeds: [testEmbed] }).catch(() => null);
+                return await interaction.editReply({ content: `✅ ส่งข้อความทดสอบระบบ Boost ไปที่ห้อง <#${targetChan.id}> เรียบร้อยแล้วครับ!` });
             }
 
             if (interaction.commandName === 'setup-welcome') {
@@ -463,24 +425,17 @@ client.on('interactionCreate', async (interaction) => {
 
                 const targetChannel = interaction.options.getChannel('channel');
                 const title = interaction.options.getString('title') || '🎉 ยินดีต้อนรับสู่ {guild}!';
-                const description = interaction.options.getString('description') || '👋 ยินดีต้อนรับคุณ {user} เข้าสู่เซิร์ฟเวอร์ **{guild}** ครับ!\n\nขณะนี้เซิร์ฟเวอร์ของเรามีสมาชิกทั้งหมด **{memberCount}** คนแล้ว ✨\nขอให้สนุกกับการอยู่ร่วมกันนะครับ!';
+                const description = interaction.options.getString('description') || '👋 ยินดีต้อนรับคุณ {user} เข้าสู่เซิร์ฟเวอร์ **{guild}** ครับ!';
                 const contentMessage = interaction.options.getString('content_message') || '✨ ยินดีต้อนรับ {user} สู่เซิร์ฟเวอร์ของเรา!';
                 const bannerUrl = interaction.options.getString('banner_url') || null;
                 const color = interaction.options.getString('color') || '#5865F2';
 
-                client.welcomeConfigs.set(interaction.guild.id, {
-                    channelId: targetChannel.id,
-                    title,
-                    description,
-                    contentMessage,
-                    bannerUrl,
-                    color
-                });
+                client.welcomeConfigs.set(interaction.guild.id, { channelId: targetChannel.id, title, description, contentMessage, bannerUrl, color });
 
                 const resultEmbed = new EmbedBuilder()
                     .setTitle('⚙️ ตั้งค่าระบบต้อนรับ (Welcome) เรียบร้อย!')
                     .setColor(0x2ECC71)
-                    .setDescription(`ตั้งค่าห้องต้อนรับไปที่ <#${targetChannel.id}> เรียบร้อยครับ!\n\n💡 **พิมพ์ `/test-welcome` เพื่อทดสอบข้อความต้อนรับได้ทันที!**`)
+                    .setDescription(`ตั้งค่าห้องต้อนรับไปที่ <#${targetChannel.id}> เรียบร้อยครับ!`)
                     .setTimestamp();
 
                 return await interaction.editReply({ embeds: [resultEmbed] });
@@ -492,14 +447,13 @@ client.on('interactionCreate', async (interaction) => {
                 const welcomeConfig = client.welcomeConfigs.get(interaction.guild.id) || {
                     channelId: interaction.channel.id,
                     title: '🎉 ยินดีต้อนรับสู่ {guild}!',
-                    description: '👋 ยินดีต้อนรับคุณ {user} เข้าสู่เซิร์ฟเวอร์ **{guild}** ครับ!\n\nขณะนี้เซิร์ฟเวอร์ของเรามีสมาชิกทั้งหมด **{memberCount}** คนแล้ว ✨\nขอให้สนุกกับการอยู่ร่วมกันนะครับ!',
+                    description: '👋 ยินดีต้อนรับคุณ {user} เข้าสู่เซิร์ฟเวอร์ **{guild}** ครับ!',
                     contentMessage: '✨ ยินดีต้อนรับ {user} สู่เซิร์ฟเวอร์ของเรา!',
                     bannerUrl: null,
                     color: '#5865F2'
                 };
 
                 const targetChan = interaction.guild.channels.cache.get(welcomeConfig.channelId) || interaction.channel;
-
                 const formattedTitle = parseCustomTags(welcomeConfig.title, interaction.guild, interaction.member);
                 const formattedDesc = parseCustomTags(welcomeConfig.description, interaction.guild, interaction.member);
                 const formattedContent = parseCustomTags(welcomeConfig.contentMessage, interaction.guild, interaction.member);
@@ -520,14 +474,8 @@ client.on('interactionCreate', async (interaction) => {
                     testEmbed.setImage(welcomeConfig.bannerUrl);
                 }
 
-                await targetChan.send({
-                    content: `⚠️ **[ข้อความทดสอบระบบ WELCOME]**\n${formattedContent}`,
-                    embeds: [testEmbed]
-                }).catch(() => null);
-
-                return await interaction.editReply({ 
-                    content: `✅ ส่งข้อความทดสอบระบบ Welcome ไปที่ห้อง <#${targetChan.id}> เรียบร้อยแล้วครับ!`
-                });
+                await targetChan.send({ content: `⚠️ **[ข้อความทดสอบระบบ WELCOME]**\n${formattedContent}`, embeds: [testEmbed] }).catch(() => null);
+                return await interaction.editReply({ content: `✅ ส่งข้อความทดสอบระบบ Welcome ไปที่ห้อง <#${targetChan.id}> เรียบร้อยแล้วครับ!` });
             }
 
             if (interaction.commandName === 'setup_buttons') {
@@ -541,20 +489,13 @@ client.on('interactionCreate', async (interaction) => {
                 try {
                     targetMessage = await targetChannel.messages.fetch(messageId);
                 } catch (err) {
-                    return await interaction.editReply({ 
-                        content: `❌ ไม่พบข้อความ ID: \`${messageId}\` ในห้อง <#${targetChannel.id}> กรุณาตรวจสอบ ID และสิทธิ์บอท` 
-                    });
+                    return await interaction.editReply({ content: `❌ ไม่พบข้อความ ID: \`${messageId}\` ในห้อง <#${targetChannel.id}>` });
                 }
 
                 const row = new ActionRowBuilder();
                 let buttonCount = 0;
 
-                const styleMap = {
-                    'Primary': ButtonStyle.Primary,
-                    'Secondary': ButtonStyle.Secondary,
-                    'Success': ButtonStyle.Success,
-                    'Danger': ButtonStyle.Danger
-                };
+                const styleMap = { 'Primary': ButtonStyle.Primary, 'Secondary': ButtonStyle.Secondary, 'Success': ButtonStyle.Success, 'Danger': ButtonStyle.Danger };
 
                 for (let i = 1; i <= 3; i++) {
                     const role = interaction.options.getRole(`role${i}`);
@@ -563,55 +504,27 @@ client.on('interactionCreate', async (interaction) => {
                     const emoji = interaction.options.getString(`emoji${i}`);
 
                     if (role && label) {
-                        const btn = new ButtonBuilder()
-                            .setCustomId(`btn_toggle_role_${role.id}`)
-                            .setLabel(label)
-                            .setStyle(styleMap[styleStr] || ButtonStyle.Primary);
-
+                        const btn = new ButtonBuilder().setCustomId(`btn_toggle_role_${role.id}`).setLabel(label).setStyle(styleMap[styleStr] || ButtonStyle.Primary);
                         if (emoji) btn.setEmoji(emoji);
-
                         row.addComponents(btn);
                         buttonCount++;
                     }
                 }
 
-                if (buttonCount === 0) {
-                    return await interaction.editReply({ content: '❌ คุณต้องระบุยศและข้อความปุ่มอย่างน้อย 1 ชุด!' });
-                }
+                if (buttonCount === 0) return await interaction.editReply({ content: '❌ คุณต้องระบุยศและข้อความปุ่มอย่างน้อย 1 ชุด!' });
 
                 let embedsToUse = [...(targetMessage.embeds || [])];
                 if (imageUrl && imageUrl.startsWith('http')) {
-                    if (embedsToUse.length > 0) {
-                        const newEmbed = EmbedBuilder.from(embedsToUse[0]).setImage(imageUrl);
-                        embedsToUse[0] = newEmbed;
-                    } else {
-                        const newEmbed = new EmbedBuilder().setImage(imageUrl);
-                        embedsToUse.push(newEmbed);
-                    }
+                    if (embedsToUse.length > 0) embedsToUse[0] = EmbedBuilder.from(embedsToUse[0]).setImage(imageUrl);
+                    else embedsToUse.push(new EmbedBuilder().setImage(imageUrl));
                 }
 
-                try {
-                    if (targetMessage.author.id === client.user.id) {
-                        await targetMessage.edit({ embeds: embedsToUse, components: [row] });
-                        return await interaction.editReply({ 
-                            content: `✅ เพิ่มปุ่มรับยศ ${buttonCount} ปุ่ม ให้ข้อความในห้อง <#${targetChannel.id}> เรียบร้อยแล้ว!` 
-                        });
-                    } else {
-                        const payload = {
-                            content: targetMessage.content || null,
-                            embeds: embedsToUse,
-                            files: Array.from(targetMessage.attachments.values()),
-                            components: [row]
-                        };
-
-                        await targetChannel.send(payload);
-                        return await interaction.editReply({ 
-                            content: `✅ สร้างข้อความใหม่พร้อมแนบปุ่มให้ในห้อง <#${targetChannel.id}> เรียบร้อยแล้วครับ!` 
-                        });
-                    }
-                } catch (error) {
-                    console.error('Error attaching buttons:', error);
-                    return await interaction.editReply({ content: '❌ เกิดข้อผิดพลาดในการแก้ไขข้อความ' });
+                if (targetMessage.author.id === client.user.id) {
+                    await targetMessage.edit({ embeds: embedsToUse, components: [row] });
+                    return await interaction.editReply({ content: `✅ เพิ่มปุ่มรับยศ ${buttonCount} ปุ่ม เรียบร้อยแล้ว!` });
+                } else {
+                    await targetChannel.send({ content: targetMessage.content || null, embeds: embedsToUse, components: [row] });
+                    return await interaction.editReply({ content: `✅ สร้างข้อความใหม่พร้อมแนบปุ่มให้เรียบร้อยแล้ว!` });
                 }
             }
 
@@ -634,98 +547,53 @@ client.on('interactionCreate', async (interaction) => {
                 await interaction.deferReply({ ephemeral: true });
 
                 const messageId = interaction.options.getString('message_id').trim();
-                const rawRoleIds = interaction.options.getString('role_ids').split(',').map(id => id.trim()).filter(id => id.length > 0);
+                const rawRoleIds = interaction.options.getString('role_ids').split(',').map(id => id.trim()).filter(Boolean);
                 const placeholder = interaction.options.getString('placeholder') || '▼ เลือกยศของคุณที่นี่';
                 const imageUrl = interaction.options.getString('image_url')?.trim();
 
-                let targetMessage = interaction.channel.messages.cache.get(messageId);
-                if (!targetMessage) {
-                    targetMessage = await interaction.channel.messages.fetch(messageId).catch(() => null);
-                }
+                let targetMessage = await interaction.channel.messages.fetch(messageId).catch(() => null);
+                if (!targetMessage) return await interaction.editReply({ content: '❌ หาข้อความไม่พบ! กรุณาตรวจสอบ ID ข้อความอีกครั้ง' });
 
-                if (!targetMessage) {
-                    return await interaction.editReply({ content: '❌ หาข้อความไม่พบ! กรุณาตรวจสอบ ID ข้อความอีกครั้ง' });
-                }
-
-                const validRoles = [];
-                for (const id of rawRoleIds) {
-                    const role = interaction.guild.roles.cache.get(id);
-                    if (role) validRoles.push(role);
-                }
-
-                if (validRoles.length === 0) {
-                    return await interaction.editReply({ content: '❌ ไม่พบยศที่ระบุในเซิร์ฟเวอร์ กรุณาเช็ก ID ของยศให้ถูกต้อง' });
-                }
+                const validRoles = rawRoleIds.map(id => interaction.guild.roles.cache.get(id)).filter(Boolean);
+                if (validRoles.length === 0) return await interaction.editReply({ content: '❌ ไม่พบยศที่ระบุในเซิร์ฟเวอร์' });
 
                 const roleChunks = [];
-                for (let i = 0; i < validRoles.length; i += 25) {
-                    roleChunks.push(validRoles.slice(i, i + 25));
-                }
+                for (let i = 0; i < validRoles.length; i += 25) roleChunks.push(validRoles.slice(i, i + 25));
 
-                if (roleChunks.length > 5) {
-                    return await interaction.editReply({ content: '⚠️ Discord อนุญาตให้ใส่ Dropdown ได้สูงสุด 5 แถว (125 ยศ) ต่อ 1 ข้อความครับ' });
-                }
-
-                const actionRows = [];
-                roleChunks.forEach((chunk, index) => {
+                const actionRows = roleChunks.map((chunk, index) => {
                     const selectMenu = new StringSelectMenuBuilder()
                         .setCustomId(`select_unlimited_roles_${index}`)
                         .setPlaceholder(roleChunks.length > 1 ? `${placeholder} (ชุดที่ ${index + 1})` : placeholder)
                         .setMinValues(0)
                         .setMaxValues(chunk.length)
-                        .addOptions(
-                            chunk.map(role => 
-                                new StringSelectMenuOptionBuilder()
-                                    .setLabel(role.name)
-                                    .setValue(role.id)
-                            )
-                        );
-
-                    actionRows.push(new ActionRowBuilder().addComponents(selectMenu));
+                        .addOptions(chunk.map(role => new StringSelectMenuOptionBuilder().setLabel(role.name).setValue(role.id)));
+                    return new ActionRowBuilder().addComponents(selectMenu);
                 });
 
                 let embedsToUse = [...(targetMessage.embeds || [])];
                 if (imageUrl && imageUrl.startsWith('http')) {
-                    if (embedsToUse.length > 0) {
-                        const newEmbed = EmbedBuilder.from(embedsToUse[0]).setImage(imageUrl);
-                        embedsToUse[0] = newEmbed;
-                    } else {
-                        const newEmbed = new EmbedBuilder().setImage(imageUrl);
-                        embedsToUse.push(newEmbed);
-                    }
+                    if (embedsToUse.length > 0) embedsToUse[0] = EmbedBuilder.from(embedsToUse[0]).setImage(imageUrl);
+                    else embedsToUse.push(new EmbedBuilder().setImage(imageUrl));
                 }
 
-                try {
-                    if (targetMessage.author.id === client.user.id) {
-                        await targetMessage.edit({ embeds: embedsToUse, components: actionRows });
-                        return await interaction.editReply({ content: `✅ อัปเดต Dropdown เลือกยศรวม **${validRoles.length}** ยศ ใส่ข้อความเดิมเรียบร้อยแล้ว!` });
-                    } else {
-                        const payload = {
-                            content: targetMessage.content || null,
-                            embeds: embedsToUse,
-                            files: Array.from(targetMessage.attachments.values()),
-                            components: actionRows
-                        };
-
-                        await targetMessage.channel.send(payload);
-                        return await interaction.editReply({ content: `✅ สร้างข้อความใหม่พร้อมแนบ Dropdown รวม **${validRoles.length}** ยศ เรียบร้อย!` });
-                    }
-                } catch (err) {
-                    console.error('Dropdown Setup Error:', err);
-                    return await interaction.editReply({ content: '❌ เกิดข้อผิดพลาดในการใส่ Dropdown กรุณาตรวจสอบสิทธิ์บอท' });
+                if (targetMessage.author.id === client.user.id) {
+                    await targetMessage.edit({ embeds: embedsToUse, components: actionRows });
+                } else {
+                    await targetMessage.channel.send({ content: targetMessage.content || null, embeds: embedsToUse, components: actionRows });
                 }
+                return await interaction.editReply({ content: `✅ อัปเดต Dropdown รวม **${validRoles.length}** ยศ เรียบร้อย!` });
             }
         }
 
         // --- BUTTON & MODAL & SELECT MENU HANDLERS ---
         if (interaction.isButton()) {
+            
+            // 📢 ปุ่มยืนยันประกาศรับสมัครทีมงานลงทั้ง 2 ช่อง
             if (interaction.customId === 'btn_publish_staff_announce') {
                 await interaction.deferReply({ ephemeral: true });
 
                 const announceData = client.staffAnnounceData.get(interaction.guild.id);
-                if (!announceData) {
-                    return await interaction.editReply({ content: '❌ ไม่พบข้อมูลการประกาศรับสมัคร กรุณาใช้คำสั่ง `/setup-staff-announce` ใหม่อีกครั้ง' });
-                }
+                if (!announceData) return await interaction.editReply({ content: '❌ ไม่พบข้อมูลประกาศ กรุณาใช้คำสั่ง `/setup-staff-announce` ใหม่' });
 
                 const mainChan = interaction.guild.channels.cache.get(announceData.mainChannelId);
                 const recruitChan = interaction.guild.channels.cache.get(announceData.recruitChannelId);
@@ -758,11 +626,12 @@ client.on('interactionCreate', async (interaction) => {
                 return await interaction.update({ content: '❌ ยกเลิกการประกาศรับสมัครทีมงานเรียบร้อยแล้ว', embeds: [], components: [] });
             }
 
+            // 📝 ปุ่มกดเปิดฟอร์มกรอกใบสมัครทีมงาน
             if (interaction.customId === 'btn_open_staff_app') {
                 const modal = new ModalBuilder().setCustomId('modal_submit_staff_app').setTitle('📝 ใบสมัครเข้าร่วมทีมงาน');
                 const nameInput = new TextInputBuilder().setCustomId('app_nickname').setLabel('1. ชื่อเล่น').setStyle(TextInputStyle.Short).setRequired(true);
                 const ageInput = new TextInputBuilder().setCustomId('app_age').setLabel('2. อายุ').setStyle(TextInputStyle.Short).setRequired(true);
-                const timeInput = new TextInputBuilder().setCustomId('app_work_time').setLabel('3. เวลาทำงาน (ช่วงเวลาที่สะดวก)').setStyle(TextInputStyle.Short).setRequired(true);
+                const timeInput = new TextInputBuilder().setCustomId('app_work_time').setLabel('3. เวลาทำงาน / เวลาว่างสัมภาษณ์งาน').setPlaceholder('เช่น 18:00 - 22:00 น. หรือ เสาร์-อาทิตย์').setStyle(TextInputStyle.Short).setRequired(true);
                 const reasonInput = new TextInputBuilder().setCustomId('app_reason').setLabel('4. เหตุผลที่อยากเป็นทีมงาน').setStyle(TextInputStyle.Paragraph).setRequired(true);
 
                 modal.addComponents(
@@ -774,13 +643,12 @@ client.on('interactionCreate', async (interaction) => {
                 return await interaction.showModal(modal);
             }
 
+            // 🔍 แอดมินกดตรวจสอบข้อมูลใบสมัคร
             if (interaction.customId.startsWith('btn_admin_check_app_')) {
                 const appId = interaction.customId.replace('btn_admin_check_app_', '');
                 const appData = client.staffApplications.get(appId);
 
-                if (!appData) {
-                    return await interaction.reply({ content: '❌ ไม่พบข้อมูลใบสมัครนี้แล้ว', ephemeral: true });
-                }
+                if (!appData) return await interaction.reply({ content: '❌ ไม่พบข้อมูลใบสมัครนี้แล้ว', ephemeral: true });
 
                 const passBtn = new ButtonBuilder().setCustomId(`btn_app_pass_${appId}`).setLabel('ผ่านการสมัคร').setStyle(ButtonStyle.Success);
                 const failBtn = new ButtonBuilder().setCustomId(`btn_app_fail_${appId}`).setLabel('ไม่ผ่านการสมัคร').setStyle(ButtonStyle.Danger);
@@ -792,23 +660,22 @@ client.on('interactionCreate', async (interaction) => {
                 await interaction.update({ embeds: [currentEmbed], components: [new ActionRowBuilder().addComponents(passBtn, failBtn)] });
             }
 
+            // 🟢 / 🔴 แอดมินกด ผ่าน หรือ ไม่ผ่าน
             if (interaction.customId.startsWith('btn_app_pass_') || interaction.customId.startsWith('btn_app_fail_')) {
                 const isPass = interaction.customId.startsWith('btn_app_pass_');
                 const appId = interaction.customId.replace(isPass ? 'btn_app_pass_' : 'btn_app_fail_', '');
                 const appData = client.staffApplications.get(appId);
 
-                if (!appData) {
-                    return await interaction.reply({ content: '❌ ไม่พบข้อมูลใบสมัครนี้แล้ว', ephemeral: true });
-                }
+                if (!appData) return await interaction.reply({ content: '❌ ไม่พบข้อมูลใบสมัครนี้แล้ว', ephemeral: true });
 
                 const guild = client.guilds.cache.get(appData.guildId);
                 const applicantMember = await guild?.members.fetch(appData.applicantId).catch(() => null);
 
-                // พยายามหายศที่ตรงกับชื่อตำแหน่ง
+                // พยายามหายศที่ตรงกับตำแหน่ง
                 const matchedRole = guild?.roles.cache.find(r => r.name.toLowerCase() === appData.position.toLowerCase());
                 const roleMention = matchedRole ? `<@&${matchedRole.id}>` : `**[ ${appData.position} ]**`;
 
-                // ช่องรอสัมภาษณ์
+                // ค้นหาห้องสัมภาษณ์งาน
                 const interviewChannel = guild?.channels.cache.find(c => c.name.includes('สัมภาษณ์') || c.name.includes('interview'));
                 const interviewChanMention = interviewChannel ? `<#${interviewChannel.id}>` : '`ห้องรอสัมภาษณ์`';
 
@@ -816,26 +683,29 @@ client.on('interactionCreate', async (interaction) => {
                     try {
                         if (isPass) {
                             await applicantMember.send(
-                                `🎉 **ยินดีด้วยครับ!** คุณผ่านการยืนยันการสมัครโดยแอดมิน <@${interaction.user.id}>\n` +
-                                `📌 **ตำแหน่งที่สมัคร:** ${roleMention}\n` +
-                                `💬 กรุณามารอสัมภาษณ์งานที่ห้อง ${interviewChanMention} ในเวลาที่นัดหมายครับ!`
+                                `🎉 **ยินดีด้วยครับ! คุณผ่านการคัดเลือกเบื้องต้น**\n` +
+                                `คุณผ่านการยืนยันโดยแอดมิน <@${interaction.user.id}>\n` +
+                                `📌 **ตำแหน่ง:** ${roleMention}\n` +
+                                `💬 **เวลาว่างสัมภาษณ์ของคุณ:** \`${appData.workTime}\`\n` +
+                                `กรุณามารอสัมภาษณ์งานที่ห้อง ${interviewChanMention} ในเวลาที่คุณได้ระบุไว้ครับ!`
                             );
                         } else {
                             await applicantMember.send(
-                                `❌ **เสียใจด้วยครับ** ผลการสมัครทีมงานของคุณไม่ผ่านการคัดเลือกโดยแอดมิน <@${interaction.user.id}>\n` +
+                                `🔴 **แจ้งผลการสมัครทีมงาน**\n` +
+                                `ผลการสมัครของคุณไม่ผ่านการคัดเลือกโดยแอดมิน <@${interaction.user.id}>\n` +
                                 `📌 **ตำแหน่ง:** ${roleMention}\n` +
-                                `ขอบคุณที่ให้ความสนใจเข้าร่วมทีมงานกับเราครับ!`
+                                `ขอบคุณที่ให้ความสนใจเข้าร่วมทีมงานกับทางเราครับ!`
                             );
                         }
                     } catch (err) {
-                        console.error('ไม่สามารถ DM หาผู้สมัครได้:', err);
+                        console.error('ไม่สามารถส่ง DM หาผู้สมัครได้:', err);
                     }
                 }
 
-                const statusText = isPass ? '🟢 ผ่านการสมัคร' : '🔴 ไม่ผ่านการสมัคร';
+                const statusText = isPass ? '🟢 ผ่านการสมัคร (ส่ง DM แจ้งผู้สมัครเรียบร้อย)' : '🔴 ไม่ผ่านการสมัคร (ส่ง DM แจ้งผู้สมัครเรียบร้อย)';
                 const finalEmbed = EmbedBuilder.from(interaction.message.embeds[0])
                     .setColor(isPass ? 0x2ECC71 : 0xE74C3C)
-                    .addFields({ name: '📌 ผลการพิจารณา', value: `${statusText} (โดย <@${interaction.user.id}>)`, inline: false });
+                    .addFields({ name: '📌 ผลการพิจารณา', value: `${statusText}\n**แอดมินผู้ตรวจ:** <@${interaction.user.id}>`, inline: false });
 
                 await interaction.update({ embeds: [finalEmbed], components: [] });
             }
@@ -847,45 +717,27 @@ client.on('interactionCreate', async (interaction) => {
                 const role = interaction.guild.roles.cache.get(roleId);
                 const member = interaction.member;
 
-                if (!role) {
-                    return await interaction.editReply({ content: '❌ ไม่พบยศนี้ในเซิร์ฟเวอร์ (ยศอาจถูกลบไปแล้ว)' });
-                }
+                if (!role) return await interaction.editReply({ content: '❌ ไม่พบยศนี้ในเซิร์ฟเวอร์' });
 
-                try {
-                    const botMember = await interaction.guild.members.fetchMe();
-                    if (role.position >= botMember.roles.highest.position) {
-                        return await interaction.editReply({ 
-                            content: `❌ บอทไม่สามารถมอบยศ **${role.name}** ได้เนื่องจากยศบอทอยู่ต่ำกว่ายศนี้!` 
-                        });
-                    }
-
-                    if (member.roles.cache.has(role.id)) {
-                        await member.roles.remove(role);
-                        return await interaction.editReply({ 
-                            content: `🔴 ถอดยศ **${role.name}** ออกเรียบร้อยแล้ว!` 
-                        });
-                    } else {
-                        await member.roles.add(role);
-                        return await interaction.editReply({ 
-                            content: `✅ เพิ่มยศ **${role.name}** ให้คุณเรียบร้อยแล้ว!` 
-                        });
-                    }
-                } catch (err) {
-                    console.error('Error toggling button role:', err);
-                    return await interaction.editReply({ content: '❌ เกิดข้อผิดพลาดในการปรับเปลี่ยนยศ' });
+                if (member.roles.cache.has(role.id)) {
+                    await member.roles.remove(role);
+                    return await interaction.editReply({ content: `🔴 ถอดยศ **${role.name}** ออกเรียบร้อยแล้ว!` });
+                } else {
+                    await member.roles.add(role);
+                    return await interaction.editReply({ content: `✅ เพิ่มยศ **${role.name}** ให้คุณเรียบร้อยแล้ว!` });
                 }
             }
 
             if (interaction.customId === 'btn_cmd_ticket') {
                 const modal = new ModalBuilder().setCustomId('modal_cmd_ticket_submit').setTitle('📝 แบบฟอร์มส่งเรื่องร้องเรียน');
-                const detailInput = new TextInputBuilder().setCustomId('input_detail').setLabel('รายละเอียดเรื่องที่ต้องการแจ้ง').setPlaceholder('พิมพ์รายละเอียดปัญหา...').setStyle(TextInputStyle.Paragraph).setRequired(true);
+                const detailInput = new TextInputBuilder().setCustomId('input_detail').setLabel('รายละเอียดเรื่องที่ต้องการแจ้ง').setStyle(TextInputStyle.Paragraph).setRequired(true);
                 modal.addComponents(new ActionRowBuilder().addComponents(detailInput));
                 return await interaction.showModal(modal);
             }
 
             if (interaction.customId === 'btn_cmd_report') {
                 const modal = new ModalBuilder().setCustomId('modal_cmd_report_submit').setTitle('⚠️ แบบฟอร์มรายงานผู้กระทำผิด');
-                const userInput = new TextInputBuilder().setCustomId('report_target_user').setLabel('1. แท็ก / ID ผู้กระทำผิด').setPlaceholder('ใส่ ID หรือ @username').setStyle(TextInputStyle.Short).setRequired(true);
+                const userInput = new TextInputBuilder().setCustomId('report_target_user').setLabel('1. แท็ก / ID ผู้กระทำผิด').setStyle(TextInputStyle.Short).setRequired(true);
                 const reasonInput = new TextInputBuilder().setCustomId('report_reason').setLabel('2. เหตุผลที่รายงาน').setStyle(TextInputStyle.Short).setRequired(true);
                 const detailInput = new TextInputBuilder().setCustomId('report_detail').setLabel('3. รายละเอียด/หลักฐาน').setStyle(TextInputStyle.Paragraph).setRequired(true);
 
@@ -899,7 +751,7 @@ client.on('interactionCreate', async (interaction) => {
 
             if (interaction.customId === 'btn_cmd_admin') {
                 const modal = new ModalBuilder().setCustomId('modal_cmd_admin_submit').setTitle('👤 แบบฟอร์มจัดการผู้ใช้');
-                const userInput = new TextInputBuilder().setCustomId('admin_target_user').setLabel('1. แท็ก / ID ผู้ใช้').setPlaceholder('ใส่ ID หรือ @username').setStyle(TextInputStyle.Short).setRequired(true);
+                const userInput = new TextInputBuilder().setCustomId('admin_target_user').setLabel('1. แท็ก / ID ผู้ใช้').setStyle(TextInputStyle.Short).setRequired(true);
                 const reasonInput = new TextInputBuilder().setCustomId('admin_reason').setLabel('2. เหตุผลที่รายงาน').setStyle(TextInputStyle.Short).setRequired(true);
                 const problemInput = new TextInputBuilder().setCustomId('admin_problem').setLabel('3. ปัญหาที่พบจากผู้ใช้').setStyle(TextInputStyle.Paragraph).setRequired(true);
 
@@ -913,6 +765,8 @@ client.on('interactionCreate', async (interaction) => {
         }
 
         if (interaction.isModalSubmit()) {
+            
+            // 📋 บันทึกข้อมูล Modal ตั้งค่าประกาศรับสมัครทีมงาน
             if (interaction.customId === 'modal_staff_announce_config') {
                 await interaction.deferReply({ ephemeral: true });
 
@@ -956,6 +810,7 @@ client.on('interactionCreate', async (interaction) => {
                 return await interaction.editReply({ embeds: [previewEmbed], components: [new ActionRowBuilder().addComponents(pubBtn, cancelBtn)] });
             }
 
+            // 📝 เมื่อสมาชิกส่ง Modal ใบสมัครทีมงาน -> ขึ้น Dropdown ตำแหน่งทันที
             if (interaction.customId === 'modal_submit_staff_app') {
                 await interaction.deferReply({ ephemeral: true });
 
@@ -965,6 +820,7 @@ client.on('interactionCreate', async (interaction) => {
                 const reason = interaction.fields.getTextInputValue('app_reason');
 
                 const announceData = client.staffAnnounceData.get(interaction.guild.id);
+                // ดึงเฉพาะตำแหน่งที่เปิดรับสมัครล่าสุดจากประกาศ
                 const positions = announceData ? announceData.positions : ['Admin', 'Moderator', 'Staff'];
 
                 const appId = `app_${Date.now()}`;
@@ -986,7 +842,7 @@ client.on('interactionCreate', async (interaction) => {
 
                 const selectMenu = new StringSelectMenuBuilder()
                     .setCustomId('select_staff_app_position')
-                    .setPlaceholder('▼ เลือกตำแหน่งที่คุณต้องการสมัคร')
+                    .setPlaceholder('▼ เลือกตำแหน่งที่คุณต้องการสมัคร (แสดงเฉพาะตำแหน่งที่เปิดรับ)')
                     .addOptions(selectOptions);
 
                 return await interaction.editReply({
@@ -1096,7 +952,6 @@ client.on('interactionCreate', async (interaction) => {
                 });
             }
 
-            // 🔨 MODAL SUBMIT: จัดการระบบแบน ยศอัตโนมัติ การนับเวลาถอยหลัง และการจำกัดสิทธิ์ในดิส
             if (interaction.customId.startsWith('modal_admin_ban_time_')) {
                 await interaction.deferReply({ ephemeral: true });
 
@@ -1107,29 +962,23 @@ client.on('interactionCreate', async (interaction) => {
 
                 if (!targetMember) return interaction.editReply({ content: '❌ ไม่พบผู้ใช้คนนี้ในเซิร์ฟเวอร์แล้ว' });
 
-                // คำนวณระยะเวลา (ms)
                 let ms = 0;
                 if (durationStr.endsWith('d')) ms = parseInt(durationStr) * 24 * 60 * 60 * 1000;
                 else if (durationStr.endsWith('h')) ms = parseInt(durationStr) * 60 * 60 * 1000;
                 else if (durationStr.endsWith('m')) ms = parseInt(durationStr) * 60 * 1000;
 
-                if (ms <= 0) return interaction.editReply({ content: '❌ รูปแบบเวลาไม่ถูกต้อง! กรุณาระบุ เช่น 1d, 12h, 30m' });
+                if (ms <= 0) return interaction.editReply({ content: '❌ รูปแบบเวลาไม่ถูกต้อง!' });
 
                 const now = Date.now();
-                const unbanTime = Math.floor((now + ms) / 1000); // Unix Timestamp สำหรับนับเวลาถอยหลัง
+                const unbanTime = Math.floor((now + ms) / 1000);
 
-                // 1. มอบยศถูกแบนอัตโนมัติ
                 if (BANNED_ROLE_ID) {
-                    await targetMember.roles.add(BANNED_ROLE_ID).catch(err => console.error('ไม่สามารถให้ยศแบนได้:', err));
-                    
-                    // ปิดกั้นสิทธิ์พิมพ์/ส่งเสียงของยศนี้ทั่วทั้ง Server
+                    await targetMember.roles.add(BANNED_ROLE_ID).catch(() => null);
                     await lockServerForBannedRole(interaction.guild, BANNED_ROLE_ID);
                 }
 
-                // 2. ตั้งระบบ Timeout ของ Discord ด้วย
                 await targetMember.timeout(ms, tempData.reason).catch(() => null);
 
-                // 3. ระบบปลดแบนอัตโนมัติเมื่อครบกำหนดวัน/เวลา
                 setTimeout(async () => {
                     try {
                         const memberToUnban = await interaction.guild.members.fetch(targetId).catch(() => null);
@@ -1139,12 +988,7 @@ client.on('interactionCreate', async (interaction) => {
 
                             const banLogChan = interaction.guild.channels.cache.get(BAN_LOG_CHANNEL_ID || REPORT_LOG_CHANNEL_ID);
                             if (banLogChan) {
-                                const unbanEmbed = new EmbedBuilder()
-                                    .setTitle('🔓 ประกาศปลดแบนอัตโนมัติ')
-                                    .setColor(0x2ECC71)
-                                    .setDescription(`✨ สมาชิก <@${targetId}> หมดระยะเวลาลงโทษแล้ว ระบบได้ทำการปลดแบนและถอดยศให้อัตโนมัติเรียบร้อย!`)
-                                    .setTimestamp();
-
+                                const unbanEmbed = new EmbedBuilder().setTitle('🔓 ประกาศปลดแบนอัตโนมัติ').setColor(0x2ECC71).setDescription(`✨ สมาชิก <@${targetId}> หมดระยะเวลาลงโทษแล้ว`).setTimestamp();
                                 await banLogChan.send({ content: `🔔 <@${targetId}>`, embeds: [unbanEmbed] });
                             }
                         }
@@ -1153,7 +997,6 @@ client.on('interactionCreate', async (interaction) => {
                     }
                 }, ms);
 
-                // 4. ส่ง Embed ประกาศการแบน + แท็กสมาชิก + นับเวลาถอยหลัง
                 const banLogChan = interaction.guild.channels.cache.get(BAN_LOG_CHANNEL_ID || REPORT_LOG_CHANNEL_ID);
                 const banEmbed = new EmbedBuilder()
                     .setTitle('🔨 ประกาศสมาชิกโดนแบน / ลงโทษ')
@@ -1167,30 +1010,27 @@ client.on('interactionCreate', async (interaction) => {
                         { name: '⚠️ ปัญหาที่พบ', value: tempData.problem, inline: false },
                         { name: '🛡️ ผู้อนุมัติการแบน', value: `<@${interaction.user.id}>`, inline: false }
                     )
-                    .setFooter({ text: `${interaction.guild.name} • ระบบการลงโทษอัตโนมัติ`, iconURL: interaction.guild.iconURL({ dynamic: true }) })
+                    .setFooter({ text: `${interaction.guild.name} • ระบบการลงโทษอัตโนมัติ` })
                     .setTimestamp();
 
                 if (banLogChan) {
-                    await banLogChan.send({ 
-                        content: `🚨 **ประกาศลงโทษสมาชิก:** <@${targetMember.id}>`, 
-                        embeds: [banEmbed] 
-                    });
+                    await banLogChan.send({ content: `🚨 **ประกาศลงโทษสมาชิก:** <@${targetMember.id}>`, embeds: [banEmbed] });
                 }
 
-                return await interaction.editReply({ content: `✅ ดำเนินการแบน <@${targetId}> เป็นเวลา \`${durationStr}\` และตั้งค่านับเวลาถอยหลังเรียบร้อยแล้ว!` });
+                return await interaction.editReply({ content: `✅ ดำเนินการแบน <@${targetId}> เป็นเวลา \`${durationStr}\` เรียบร้อยแล้ว!` });
             }
         }
 
         if (interaction.isStringSelectMenu()) {
+
+            // 🎯 ผู้สมัครกดเลือกตำแหน่งจาก Dropdown -> ส่งไปยังแอดมิน
             if (interaction.customId === 'select_staff_app_position') {
                 await interaction.deferReply({ ephemeral: true });
 
                 const [appId, selectedPosition] = interaction.values[0].split('||');
                 const appData = client.staffApplications.get(appId);
 
-                if (!appData) {
-                    return await interaction.editReply({ content: '❌ ไม่พบข้อมูลใบสมัครของคุณแล้ว กรุณาลองใหม่อีกครั้ง' });
-                }
+                if (!appData) return await interaction.editReply({ content: '❌ ไม่พบข้อมูลใบสมัครของคุณแล้ว กรุณาลองใหม่อีกครั้ง' });
 
                 appData.position = selectedPosition;
                 client.staffApplications.set(appId, appData);
@@ -1204,7 +1044,7 @@ client.on('interactionCreate', async (interaction) => {
                         { name: '🏷️ ตำแหน่งที่สมัคร', value: `\`${selectedPosition}\``, inline: true },
                         { name: '📛 ชื่อเล่น', value: appData.nickname, inline: true },
                         { name: '🎂 อายุ', value: `${appData.age} ปี`, inline: true },
-                        { name: '⏰ เวลาทำงาน', value: appData.workTime, inline: false },
+                        { name: '⏰ เวลาทำงาน / ว่างสัมภาษณ์', value: appData.workTime, inline: false },
                         { name: '💬 เหตุผลที่สมัคร', value: appData.reason, inline: false }
                     )
                     .setFooter({ text: `${interaction.guild.name} • Staff Recruitment` })
@@ -1215,7 +1055,6 @@ client.on('interactionCreate', async (interaction) => {
                     .setLabel('🔍 ตรวจสอบข้อมูลแล้ว')
                     .setStyle(ButtonStyle.Primary);
 
-                // ส่งไปยังช่องแอดมิน / DM แอดมิน
                 const reportChan = interaction.guild.channels.cache.get(REPORT_LOG_CHANNEL_ID);
                 if (reportChan) {
                     await reportChan.send({
@@ -1224,7 +1063,6 @@ client.on('interactionCreate', async (interaction) => {
                         components: [new ActionRowBuilder().addComponents(checkBtn)]
                     }).catch(() => null);
                 } else {
-                    // หากไม่มีช่องส่ง Direct Message หา Owner/Admin
                     const owner = await interaction.guild.fetchOwner().catch(() => null);
                     if (owner) {
                         await owner.send({
@@ -1246,7 +1084,6 @@ client.on('interactionCreate', async (interaction) => {
 
                 if (!targetMember) return interaction.update({ content: '❌ ไม่พบผู้ใช้คนนี้แล้ว', components: [] });
 
-                // ⛔ ระบบ BLACKLIST: บันทึกข้อมูล ส่ง Embed แท็กสมาชิก แล้วเตะออกทันที
                 if (selectedOption === 'admin_penalty_blacklist') {
                     const blacklistChan = interaction.guild.channels.cache.get(BLACKLIST_CHANNEL_ID || REPORT_LOG_CHANNEL_ID);
                     
@@ -1261,25 +1098,21 @@ client.on('interactionCreate', async (interaction) => {
                             { name: '🛡️ ดำเนินการโดย', value: `<@${interaction.user.id}>`, inline: false },
                             { name: '📌 สถานะ', value: '` เตะออกจากเซิร์ฟเวอร์เรียบร้อยแล้ว (Kicked) `', inline: false }
                         )
-                        .setFooter({ text: `${interaction.guild.name} • ระบบจัดการบัญชีดำ`, iconURL: interaction.guild.iconURL({ dynamic: true }) })
+                        .setFooter({ text: `${interaction.guild.name} • ระบบจัดการบัญชีดำ` })
                         .setTimestamp();
 
                     if (blacklistChan) {
-                        await blacklistChan.send({ 
-                            content: `⛔ **ประกาศติด BLACKLIST:** <@${targetMember.id}>`, 
-                            embeds: [blacklistEmbed] 
-                        });
+                        await blacklistChan.send({ content: `⛔ **ประกาศติด BLACKLIST:** <@${targetMember.id}>`, embeds: [blacklistEmbed] });
                     }
 
-                    // เตะออกจากเซิร์ฟเวอร์อัตโนมัติ
-                    await targetMember.kick(`[Blacklist] ${tempData.reason}`).catch(err => console.error('ไม่สามารถเตะผู้ใช้ได้:', err));
+                    await targetMember.kick(`[Blacklist] ${tempData.reason}`).catch(() => null);
 
-                    return await interaction.update({ content: `⛔ บันทึก <@${targetId}> ลงบัญชีดำ แท็กแจ้งเตือน และทำการเตะออกจากเซิร์ฟเวอร์เรียบร้อยแล้ว!`, components: [] });
+                    return await interaction.update({ content: `⛔ บันทึก <@${targetId}> ลงบัญชีดำ และเตะออกจากเซิร์ฟเวอร์เรียบร้อยแล้ว!`, components: [] });
                 }
 
                 if (selectedOption === 'admin_penalty_ban') {
                     const modal = new ModalBuilder().setCustomId(`modal_admin_ban_time_${targetId}`).setTitle('⏱️ กำหนดระยะเวลาการแบน');
-                    const durationInput = new TextInputBuilder().setCustomId('ban_duration').setLabel('ระบุระยะเวลา (เช่น 1d = 1วัน, 12h = 12ชม., 30m = 30นาที)').setPlaceholder('ตัวอย่าง: 7d หรือ 24h').setStyle(TextInputStyle.Short).setRequired(true);
+                    const durationInput = new TextInputBuilder().setCustomId('ban_duration').setLabel('ระบุระยะเวลา (เช่น 1d, 12h, 30m)').setPlaceholder('ตัวอย่าง: 7d หรือ 24h').setStyle(TextInputStyle.Short).setRequired(true);
 
                     modal.addComponents(new ActionRowBuilder().addComponents(durationInput));
                     return await interaction.showModal(modal);
@@ -1318,13 +1151,13 @@ client.on('interactionCreate', async (interaction) => {
     }
 });
 
-// 🌟 ระบบตรวจจับสมาชิกใหม่เข้าดิส (WELCOME AUTOMATION)
+// 🌟 ระบบตรวจจับสมาชิกใหม่เข้าดิส (WELCOME)
 client.on('guildMemberAdd', async (member) => {
     try {
         const welcomeConfig = client.welcomeConfigs.get(member.guild.id) || {
             channelId: process.env.WELCOME_CHANNEL_ID,
             title: '🎉 ยินดีต้อนรับสู่ {guild}!',
-            description: '👋 ยินดีต้อนรับคุณ {user} เข้าสู่เซิร์ฟเวอร์ **{guild}** ครับ!\n\nขณะนี้เซิร์ฟเวอร์ของเรามีสมาชิกทั้งหมด **{memberCount}** คนแล้ว ✨\nขอให้สนุกกับการอยู่ร่วมกันนะครับ!',
+            description: '👋 ยินดีต้อนรับคุณ {user} เข้าสู่เซิร์ฟเวอร์ **{guild}** ครับ!',
             contentMessage: '✨ ยินดีต้อนรับ {user} สู่เซิร์ฟเวอร์ของเรา!',
             bannerUrl: null,
             color: '#5865F2'
@@ -1335,11 +1168,9 @@ client.on('guildMemberAdd', async (member) => {
         const welcomeChannel = member.guild.channels.cache.get(welcomeConfig.channelId);
         if (!welcomeChannel) return;
 
-        const guild = member.guild;
-
-        const formattedTitle = parseCustomTags(welcomeConfig.title, guild, member);
-        const formattedDesc = parseCustomTags(welcomeConfig.description, guild, member);
-        const formattedContent = parseCustomTags(welcomeConfig.contentMessage, guild, member);
+        const formattedTitle = parseCustomTags(welcomeConfig.title, member.guild, member);
+        const formattedDesc = parseCustomTags(welcomeConfig.description, member.guild, member);
+        const formattedContent = parseCustomTags(welcomeConfig.contentMessage, member.guild, member);
 
         const welcomeEmbed = new EmbedBuilder()
             .setTitle(formattedTitle)
@@ -1347,21 +1178,17 @@ client.on('guildMemberAdd', async (member) => {
             .setDescription(formattedDesc)
             .addFields(
                 { name: '👤 สมาชิกใหม่', value: `<@${member.id}>`, inline: true },
-                { name: '📊 ลำดับสมาชิก', value: `คนที่ \`${guild.memberCount}\``, inline: true }
+                { name: '📊 ลำดับสมาชิก', value: `คนที่ \`${member.guild.memberCount}\``, inline: true }
             )
             .setThumbnail(member.user.displayAvatarURL({ dynamic: true }))
-            .setFooter({ text: `${guild.name} • ยินดีต้อนรับนะ 🎉` })
+            .setFooter({ text: `${member.guild.name} • ยินดีต้อนรับนะ 🎉` })
             .setTimestamp();
 
         if (welcomeConfig.bannerUrl && welcomeConfig.bannerUrl.startsWith('http')) {
             welcomeEmbed.setImage(welcomeConfig.bannerUrl);
         }
 
-        await welcomeChannel.send({
-            content: formattedContent,
-            embeds: [welcomeEmbed]
-        }).catch(err => console.error('ส่งข้อความ Welcome ล้มเหลว:', err));
-
+        await welcomeChannel.send({ content: formattedContent, embeds: [welcomeEmbed] }).catch(() => null);
     } catch (error) {
         console.error('❌ Error in guildMemberAdd:', error);
     }
@@ -1376,7 +1203,7 @@ client.on('guildMemberUpdate', async (oldMember, newMember) => {
         const boostConfig = client.boostConfigs.get(newMember.guild.id) || {
             channelId: process.env.BOOST_LOG_CHANNEL_ID,
             title: '🚀 ขอบคุณสำหรับการ Server Boost!',
-            description: '💖 ขอบคุณคุณ {user} มากๆ นะครับที่ช่วยสนับสนุนเซิร์ฟเวอร์ **{guild}**!\n\nแวะไปคุยกันได้ที่ห้อง {#พูดคุย-ทั่วไป} ได้เลยครับ ✨',
+            description: '💖 ขอบคุณคุณ {user} มากๆ นะครับที่ช่วยสนับสนุนเซิร์ฟเวอร์ **{guild}**!',
             contentMessage: '🎉 **NEW BOOST!** ขอบคุณ {user} มากๆ ครับ! 🚀✨',
             bannerUrl: null,
             color: '#F47FFF'
@@ -1387,11 +1214,9 @@ client.on('guildMemberUpdate', async (oldMember, newMember) => {
         const boostChannel = newMember.guild.channels.cache.get(boostConfig.channelId);
         if (!boostChannel) return;
 
-        const guild = newMember.guild;
-
-        const formattedTitle = parseCustomTags(boostConfig.title, guild, newMember);
-        const formattedDesc = parseCustomTags(boostConfig.description, guild, newMember);
-        const formattedContent = parseCustomTags(boostConfig.contentMessage, guild, newMember);
+        const formattedTitle = parseCustomTags(boostConfig.title, newMember.guild, newMember);
+        const formattedDesc = parseCustomTags(boostConfig.description, newMember.guild, newMember);
+        const formattedContent = parseCustomTags(boostConfig.contentMessage, newMember.guild, newMember);
 
         const boostEmbed = new EmbedBuilder()
             .setTitle(formattedTitle)
@@ -1399,21 +1224,18 @@ client.on('guildMemberUpdate', async (oldMember, newMember) => {
             .setDescription(formattedDesc)
             .addFields(
                 { name: '👤 ผู้สนับสนุน (Booster)', value: `<@${newMember.id}>`, inline: true },
-                { name: '💎 ยอด Boost รวม', value: `\`${guild.premiumSubscriptionCount || 0}\` บูสต์`, inline: true },
-                { name: '⭐ Server Level', value: `\`Level ${guild.premiumTier}\``, inline: true }
+                { name: '💎 ยอด Boost รวม', value: `\`${newMember.guild.premiumSubscriptionCount || 0}\` บูสต์`, inline: true },
+                { name: '⭐ Server Level', value: `\`Level ${newMember.guild.premiumTier}\``, inline: true }
             )
             .setThumbnail(newMember.user.displayAvatarURL({ dynamic: true }))
-            .setFooter({ text: `${guild.name} • ขอบคุณสำหรับการสนับสนุน 💖` })
+            .setFooter({ text: `${newMember.guild.name} • ขอบคุณสำหรับการสนับสนุน 💖` })
             .setTimestamp();
 
         if (boostConfig.bannerUrl && boostConfig.bannerUrl.startsWith('http')) {
             boostEmbed.setImage(boostConfig.bannerUrl);
         }
 
-        await boostChannel.send({
-            content: formattedContent,
-            embeds: [boostEmbed]
-        }).catch(err => console.error('ส่งข้อความ Boost ล้มเหลว:', err));
+        await boostChannel.send({ content: formattedContent, embeds: [boostEmbed] }).catch(() => null);
     }
 });
 
@@ -1446,21 +1268,12 @@ client.on('messageCreate', async (message) => {
                         { name: '📌 สถานะ', value: '\` สำเร็จเรียบร้อย \`', inline: true }
                     )
                     .setThumbnail(message.author.displayAvatarURL({ dynamic: true }))
-                    .setFooter({ 
-                        text: `${message.guild.name} • ระบบรับยศอัตโนมัติ`, 
-                        iconURL: message.guild.iconURL({ dynamic: true }) 
-                    })
+                    .setFooter({ text: `${message.guild.name} • ระบบรับยศอัตโนมัติ` })
                     .setTimestamp();
 
-                if (config.bannerUrl) {
-                    welcomeEmbed.setImage(config.bannerUrl);
-                }
+                if (config.bannerUrl) welcomeEmbed.setImage(config.bannerUrl);
 
-                await message.channel.send({
-                    content: `✨ <@${message.author.id}> ได้รับยศเรียบร้อยแล้ว!`,
-                    embeds: [welcomeEmbed]
-                });
-
+                await message.channel.send({ content: `✨ <@${message.author.id}> ได้รับยศเรียบร้อยแล้ว!`, embeds: [welcomeEmbed] });
             } catch (error) {
                 console.error('❌ เกิดข้อผิดพลาดในการมอบยศ:', error);
             }
@@ -1494,18 +1307,12 @@ client.on('messageCreate', async (message) => {
             const noRoleList = [];
 
             members.forEach(member => {
-                if (member.roles.cache.size <= 1) {
-                    noRoleList.push(`<@${member.id}>`);
-                }
-
+                if (member.roles.cache.size <= 1) noRoleList.push(`<@${member.id}>`);
                 if (!member.joinedTimestamp) return;
-                const daysInServer = Math.floor((now - member.joinedTimestamp) / (1000 * 60 * 60 * 24));
 
-                if (daysInServer >= 90) {
-                    inactive90Days.push(`<@${member.id}> (${daysInServer} วัน)`);
-                } else if (daysInServer >= 30) {
-                    inactive30Days.push(`<@${member.id}> (${daysInServer} วัน)`);
-                }
+                const daysInServer = Math.floor((now - member.joinedTimestamp) / (1000 * 60 * 60 * 24));
+                if (daysInServer >= 90) inactive90Days.push(`<@${member.id}> (${daysInServer} วัน)`);
+                else if (daysInServer >= 30) inactive30Days.push(`<@${member.id}> (${daysInServer} วัน)`);
             });
 
             const formatList = (arr) => {
@@ -1531,11 +1338,10 @@ client.on('messageCreate', async (message) => {
 
             if (logChannel) {
                 await logChannel.send({ embeds: [embed] });
-                await waitMsg.edit(`✅ ส่งรายชื่อและผลการตรวจสอบไปที่ห้องปฏิบัติการ <#${LOG_CHANNEL_ID}> เรียบร้อยแล้ว!`);
+                await waitMsg.edit(`✅ ส่งรายชื่อไปที่ห้อง <#${LOG_CHANNEL_ID}> เรียบร้อยแล้ว!`);
             } else {
-                await waitMsg.edit({ content: '⚠️ ไม่พบการตั้งค่า `LOG_CHANNEL_ID` ผลลัพธ์จึงแสดงในห้องนี้:', embeds: [embed] });
+                await waitMsg.edit({ content: '⚠️ ไม่พบ `LOG_CHANNEL_ID` แสดงในห้องนี้:', embeds: [embed] });
             }
-
         } catch (error) {
             console.error('Error in !status command:', error);
             await waitMsg.edit('❌ เกิดข้อผิดพลาดขณะประมวลผลข้อมูล');
